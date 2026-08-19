@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dean Edwards — IT / Field Engineer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ROOM + TERMINAL BOOT SCENE -->
+<div id="scene">
+  <div id="room">
+    <div id="desk-glow"></div>
+    <div id="monitor">
+      <div id="screen">
+        <div id="scanlines"></div>
+        <div id="crt-flicker"></div>
+        <button id="sound-toggle" type="button" aria-pressed="false">🔇 SOUND</button>
+        <pre id="boot-log"></pre>
+        <div id="prompt-row" hidden>
+          <span class="prompt-label">ENTER DECRYPTION KEY&gt;</span>
+          <input id="key-input" type="text" autocomplete="off" spellcheck="false" maxlength="20" aria-label="Decryption key">
+          <span id="cursor" class="blink">_</span>
+        </div>
+        <div id="feedback" role="status" aria-live="polite"></div>
+        <div id="access-granted" class="access-granted" hidden>
+          <span>&gt; ACCESS GRANTED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PORTFOLIO SITE (revealed after unlock) -->
+<main id="site" hidden>
+
+  <header class="taskbar" id="top">
+    <span class="taskbar-brand">DEAN_OS <span class="dim">v1.0</span></span>
+    <nav>
+      <a href="#about">about</a>
+      <a href="#skills">skills</a>
+      <a href="#experience">experience</a>
+      <a href="#work">work</a>
+      <a href="#contact">contact</a>
+    </nav>
+    <span id="taskbar-clock" class="taskbar-clock"></span>
+  </header>
+
+  <div class="desktop">
+
+    <aside class="widget-column">
+
+      <section class="widget-window" aria-label="RAM usage simulation">
+        <div class="window-titlebar">
+          <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
+          <span class="window-title">RAM_USAGE.sys</span>
+        </div>
+        <div class="window-body">
+          <canvas id="ram-canvas" width="220" height="90"></canvas>
+          <div class="ram-readout"><span id="ram-percent">—</span><span class="dim"> / 64GB</span></div>
+        </div>
+      </section>
+
+      <section class="widget-window" aria-label="Data stream visualization">
+        <div class="window-titlebar">
+          <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
+          <span class="window-title">DATA_STREAM.feed</span>
+        </div>
+        <div class="window-body no-pad">
+          <canvas id="matrix-canvas" width="220" height="220"></canvas>
+        </div>
+      </section>
+
+    </aside>
+
+    <section class="main-window" aria-label="Dean Edwards profile">
+      <div class="window-titlebar">
+        <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
+        <span class="window-title">DEAN_EDWARDS.profile — ACTIVE</span>
+      </div>
+      <div class="window-body main-content">
+
+        <section id="about" class="panel">
+          <h1>DEAN EDWARDS</h1>
+          <p class="role">IT Engineer / Field Engineer / Systems Build — Wigan, UK</p>
+          <p class="lead">Eight-plus years across systems build, hardware maintenance and secure endpoint
+            deployment, including recent work on government devices for HMRC and the Home Office. Active UK
+            security clearance. Now building the front end to go with the back end I've spent a career keeping
+            running.</p>
+          <a href="#top" class="to-top">↑ top</a>
+        </section>
+
+        <section id="skills" class="panel">
+          <h2>&gt; ls /skills</h2>
+          <ul class="skill-grid">
+            <li>Active UK Security Clearance</li>
+            <li>Windows &amp; Linux systems administration</li>
+            <li>Secure endpoint deployment &amp; build</li>
+            <li>Hardware testing, QA &amp; fault diagnosis</li>
+            <li>Server &amp; MFP maintenance (HP, IBM, Sun)</li>
+            <li>ServiceNow ticketing &amp; SLA delivery</li>
+            <li>Scripting — Python, C#</li>
+            <li>Unity development</li>
+          </ul>
+          <a href="#top" class="to-top">↑ top</a>
+        </section>
+
+        <section id="experience" class="panel">
+          <h2>&gt; cat career_history.log</h2>
+          <div class="log-entry">
+            <div class="log-head"><span class="date">2025 — 2026</span><span class="title">Infrastructure Development — Endpoint Deployment, Fujitsu Services</span></div>
+            <p>Deployed and configured Windows endpoints for government laptop rollouts for HMRC and the Home Office, inside a secure, clearance-gated environment.</p>
+          </div>
+          <div class="log-entry">
+            <div class="log-head"><span class="date">2018 — 2022</span><span class="title">3rd Line / Field Engineer, Procurri Europe</span></div>
+            <p>Maintenance, QA and testing across servers, drives and enterprise systems. On-site placement at AstraZeneca, Macclesfield, keeping lab MFPs running and hitting SLA on ServiceNow.</p>
+          </div>
+          <div class="log-entry">
+            <div class="log-head"><span class="date">2017 — 2018</span><span class="title">System Build Engineer, Scan Computers</span></div>
+            <p>Built bespoke gaming PCs to spec — component selection, assembly, testing, QA.</p>
+          </div>
+          <a href="#top" class="to-top">↑ top</a>
+        </section>
+
+        <section id="work" class="panel">
+          <h2>&gt; ls /projects</h2>
+
+          <div class="project-filters" role="tablist" aria-label="Filter projects by category">
+            <button class="filter-btn active" data-filter="all" role="tab" aria-selected="true" type="button">all</button>
+            <button class="filter-btn" data-filter="web" role="tab" aria-selected="false" type="button">web</button>
+            <button class="filter-btn" data-filter="unity" role="tab" aria-selected="false" type="button">unity</button>
+            <button class="filter-btn" data-filter="design" role="tab" aria-selected="false" type="button">design</button>
+          </div>
+
+          <div class="project-grid">
+
+            <article class="project-card" data-category="web">
+              <span class="project-tag tag-web">web</span>
+              <h3>This portfolio</h3>
+              <p>The site you're on now — CRT boot sequence, POST diagnostics, synthesized sound, and this
+                category filter. Vanilla HTML/CSS/JS, no frameworks.</p>
+            </article>
+
+            <article class="project-card stub" data-category="web">
+              <span class="project-tag tag-web">web</span>
+              <h3>Next web project</h3>
+              <p class="dim">// stub — swap in your next build, with a link and a screenshot</p>
+            </article>
+
+            <article class="project-card stub" data-category="unity">
+              <span class="project-tag tag-unity">unity</span>
+              <h3>Unity project</h3>
+              <p class="dim">// stub — title, short description, and a link or gif here</p>
+            </article>
+
+            <article class="project-card stub" data-category="unity">
+              <span class="project-tag tag-unity">unity</span>
+              <h3>Unity project</h3>
+              <p class="dim">// stub — title, short description, and a link or gif here</p>
+            </article>
+
+            <article class="project-card" data-category="design">
+              <img class="project-image" src="images/painting-01.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
+              <span class="project-tag tag-design">design</span>
+              <h3>Painting / design piece</h3>
+              <p class="dim">// swap the src above for your file, and update this title/description</p>
+            </article>
+
+            <article class="project-card" data-category="design">
+              <img class="project-image" src="images/painting-02.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
+              <span class="project-tag tag-design">design</span>
+              <h3>Painting / design piece</h3>
+              <p class="dim">// swap the src above for your file, and update this title/description</p>
+            </article>
+
+          </div>
+
+          <a href="#top" class="to-top">↑ top</a>
+        </section>
+
+        <section id="contact" class="panel">
+          <h2>&gt; contact --dean</h2>
+          <p><a href="mailto:d.c.edwards@hotmail.co.uk">d.c.edwards@hotmail.co.uk</a></p>
+          <p>07946 521942</p>
+          <a href="#top" class="to-top">↑ top</a>
+        </section>
+
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Image preview" hidden>
+  <button id="lightbox-close" type="button" aria-label="Close image preview">✕</button>
+  <img id="lightbox-img" src="" alt="">
+  <p id="lightbox-caption"></p>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
