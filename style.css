@@ -426,7 +426,14 @@ html {
 }
 .face-label {
   font-family: var(--font-mono);
-  font-size: var(--text-xl);
+  /* Not var(--text-xl): that token floors at 1.6rem, which stays put even
+     once --cube-size has shrunk to its mobile minimum (190px) — the text
+     stopped scaling down with the face it sits on and started overflowing
+     it. This mirrors the pyramid's own label (clamp(0.8rem,2vmin,1.05rem)),
+     which never had that problem, at the cube's larger existing desktop
+     size (same 3.4vmin slope and 2rem ceiling --text-xl already used) but
+     with a floor low enough to keep shrinking on small screens. */
+  font-size: clamp(0.75rem, 3.4vmin, 2rem);
   letter-spacing: 1px;
   color: var(--phosphor);
   text-shadow: 0 0 8px color-mix(in srgb, var(--phosphor) 40%, transparent);
@@ -435,7 +442,10 @@ html {
 }
 .face-subtitle {
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  /* var(--text-sm) is a flat 0.85rem with no viewport scaling at all — the
+     worst offender for mobile overflow, since "Web Design & Development" is
+     the longest string on any face. */
+  font-size: clamp(0.5rem, 1.7vmin, 0.85rem);
   letter-spacing: 0.5px;
   color: var(--phosphor-dim);
   text-align: center;

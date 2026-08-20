@@ -509,7 +509,14 @@ function initCubeNavigation() {
   // text into place (same terminal-decrypt effect as the About Me panel —
   // see decodeReveal/prepareDecodeTargets/playDecode) rather than just
   // snapping opacity to 1.
+  // shownKey tracks the last face that finished a full decode-reveal, kept
+  // separate from "currently hidden for transit" — a brief unsettle that
+  // lands back on the SAME face (e.g. the nudge demo below rocking partway
+  // toward "work" and back) should just re-show the already-decoded text,
+  // not replay the scramble from scratch. Re-scrambling only makes sense
+  // when the active face has genuinely changed.
   let shownKey = null;
+  let hiddenForTransit = false;
   function playFaceDecode(key) {
     const el = labelEls[key];
     if (!el) return;
@@ -518,12 +525,13 @@ function initCubeNavigation() {
 
   function updateLabels(_currentP, activeIndex, settled) {
     if (!settled) {
-      if (shownKey !== null) {
+      if (!hiddenForTransit) {
         Object.values(labelEls).forEach((el) => { el.style.opacity = '0'; });
-        shownKey = null;
+        hiddenForTransit = true;
       }
       return;
     }
+    hiddenForTransit = false;
     const activeKey = states[activeIndex].key;
     const face = built.facesByKey[activeKey];
     const el = labelEls[activeKey];
@@ -535,6 +543,8 @@ function initCubeNavigation() {
       el.style.opacity = '1';
       playFaceDecode(activeKey);
       shownKey = activeKey;
+    } else {
+      el.style.opacity = '1';
     }
   }
 
@@ -735,7 +745,10 @@ function initTriangleNav(onCategoryChange) {
   // the rotating 3D face under it, so keep it hidden during transit and
   // decode it into place (see decodeReveal/prepareDecodeTargets/playDecode,
   // same effect as the About Me panel) once a face settles as active.
+  // See the cube's identical shownKey/hiddenForTransit split — a brief
+  // unsettle that lands back on the same face shouldn't replay the scramble.
   let shownKey = null;
+  let hiddenForTransit = false;
   function playFaceDecode(key) {
     const el = labelEls[key];
     if (!el) return;
@@ -747,12 +760,13 @@ function initTriangleNav(onCategoryChange) {
 
   function updateLabels(_currentP, activeIndex, settled) {
     if (!settled) {
-      if (shownKey !== null) {
+      if (!hiddenForTransit) {
         Object.values(labelEls).forEach((el) => { el.style.opacity = '0'; });
-        shownKey = null;
+        hiddenForTransit = true;
       }
       return;
     }
+    hiddenForTransit = false;
     const key = CATEGORY_KEYS[activeIndex];
     const face = built.facesByKey[key];
     const el = labelEls[key];
@@ -764,6 +778,8 @@ function initTriangleNav(onCategoryChange) {
       el.style.opacity = '1';
       playFaceDecode(key);
       shownKey = key;
+    } else {
+      el.style.opacity = '1';
     }
   }
 
