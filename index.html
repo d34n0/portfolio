@@ -10,6 +10,10 @@
 </head>
 <body>
 
+<!-- Grayscale FBM shader backdrop — sits behind everything, only rendering
+     once enterSite() starts it after the terminal is unlocked. -->
+<canvas id="fbm-bg" aria-hidden="true"></canvas>
+
 <!-- ROOM + TERMINAL BOOT SCENE -->
 <div id="scene">
   <div id="room">
@@ -29,6 +33,9 @@
         <div id="access-granted" class="access-granted" hidden>
           <span>&gt; ACCESS GRANTED</span>
         </div>
+        <div id="access-denied" class="access-denied" hidden>
+          <span>&gt; ACCESS DENIED</span>
+        </div>
       </div>
     </div>
   </div>
@@ -37,160 +44,210 @@
 <!-- PORTFOLIO SITE (revealed after unlock) -->
 <main id="site" hidden>
 
-  <header class="taskbar" id="top">
-    <span class="taskbar-brand">DEAN_OS <span class="dim">v1.0</span></span>
-    <nav>
-      <a href="#about">about</a>
-      <a href="#skills">skills</a>
-      <a href="#experience">experience</a>
-      <a href="#work">work</a>
-      <a href="#contact">contact</a>
-    </nav>
-    <span id="taskbar-clock" class="taskbar-clock"></span>
-  </header>
+  <div id="cube-stage">
 
-  <div class="desktop">
-
-    <aside class="widget-column">
-
-      <section class="widget-window" aria-label="RAM usage simulation">
-        <div class="window-titlebar">
-          <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
-          <span class="window-title">RAM_USAGE.sys</span>
+    <div class="cube-slot">
+      <div class="scene">
+        <div id="cube">
+          <div class="face face-top"    data-face="home"><span class="face-label">Dean Edwards</span></div>
+          <div class="face face-front"  data-face="work"><span class="face-label">Work</span></div>
+          <div class="face face-right"  data-face="about"><span class="face-label">About Me</span></div>
+          <div class="face face-back"   data-face="skills"><span class="face-label">Skills</span></div>
+          <div class="face face-left"   data-face="experience"><span class="face-label">Experience</span></div>
+          <div class="face face-bottom" data-face="contact"><span class="face-label">Contact</span></div>
         </div>
-        <div class="window-body">
-          <canvas id="ram-canvas" width="220" height="90"></canvas>
-          <div class="ram-readout"><span id="ram-percent">—</span><span class="dim"> / 64GB</span></div>
+      </div>
+    </div>
+
+    <div id="triangle-stage" aria-hidden="true">
+      <div class="tri-wrap">
+        <div id="triangle-rotor" class="shape-rotor" role="button" tabindex="-1" aria-label="Back to cube">
+          <svg viewBox="0 0 200 174" aria-hidden="true">
+            <polygon points="100,4 196,170 4,170"></polygon>
+          </svg>
+        </div>
+        <div class="tri-labels">
+          <button class="tri-label active" data-index="0" data-category="web" type="button">Web</button>
+          <button class="tri-label" data-index="1" data-category="graphics" type="button">Graphics</button>
+          <button class="tri-label" data-index="2" data-category="games" type="button">Games</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="work-grid-panel" class="section-panel" aria-hidden="true">
+      <button id="work-grid-header" class="work-grid-header" type="button">
+        <span id="work-grid-title">Web</span>
+        <span class="work-grid-hint">View all &rarr;</span>
+      </button>
+      <div id="work-grid"></div>
+    </div>
+
+    <div id="skills-stage" aria-hidden="true">
+      <div class="tri-wrap">
+        <div id="skills-rotor" class="shape-rotor" role="button" tabindex="-1" aria-label="Back to cube">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <polygon id="skills-polygon"></polygon>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <button id="section-back" class="work-back" type="button" aria-label="Back">&larr; Back</button>
+
+    <div id="about-panel" class="section-panel" aria-hidden="true">
+      <h2>&gt; whoami</h2>
+      <p class="lead">Eight-plus years across systems build, hardware maintenance and secure endpoint
+        deployment, including recent work on government devices for HMRC and the Home Office. Active UK
+        security clearance. Now building the front end to go with the back end I've spent a career keeping
+        running.</p>
+    </div>
+
+    <div id="skills-panel" class="section-panel" aria-hidden="true">
+      <h2 id="skills-panel-title">Systems &amp; Security</h2>
+      <ul id="skills-panel-list" class="skill-grid"></ul>
+      <div id="skills-panel-dots" class="skills-panel-dots"></div>
+    </div>
+
+    <div id="experience-panel" class="section-panel" aria-hidden="true">
+      <h2>&gt; cat career_history.log</h2>
+      <div class="log-entry">
+        <div class="log-head"><span class="date">2025 — 2026</span><span class="title">Infrastructure Development — Endpoint Deployment, Fujitsu Services</span></div>
+        <p>Deployed and configured Windows endpoints for government laptop rollouts for HMRC and the Home Office, inside a secure, clearance-gated environment.</p>
+      </div>
+      <div class="log-entry">
+        <div class="log-head"><span class="date">2018 — 2022</span><span class="title">3rd Line / Field Engineer, Procurri Europe</span></div>
+        <p>Maintenance, QA and testing across servers, drives and enterprise systems. On-site placement at AstraZeneca, Macclesfield, keeping lab MFPs running and hitting SLA on ServiceNow.</p>
+      </div>
+      <div class="log-entry">
+        <div class="log-head"><span class="date">2017 — 2018</span><span class="title">System Build Engineer, Scan Computers</span></div>
+        <p>Built bespoke gaming PCs to spec — component selection, assembly, testing, QA.</p>
+      </div>
+    </div>
+
+    <div id="contact-panel" class="section-panel" aria-hidden="true">
+      <h2>&gt; contact --dean</h2>
+      <div class="contact-links">
+        <a class="contact-link" href="mailto:d.c.edwards@hotmail.co.uk">&gt; Email me</a>
+        <a class="contact-link stub-link" href="#">&gt; LinkedIn — add your profile URL</a>
+      </div>
+    </div>
+
+    <div id="face-panels">
+
+      <section class="face-panel active" data-panel="home">
+        <h1>DEAN EDWARDS</h1>
+        <p class="role">IT Engineer / Field Engineer / Systems Build — Wigan, UK</p>
+        <p class="hint">Scroll, swipe, or use the arrow keys to look around the cube.</p>
+      </section>
+
+      <section class="face-panel" data-panel="work">
+        <h2>&gt; ls /projects</h2>
+
+        <div class="project-filters" role="tablist" aria-label="Filter projects by category">
+          <button class="filter-btn active" data-filter="all" role="tab" aria-selected="true" type="button">all</button>
+          <button class="filter-btn" data-filter="web" role="tab" aria-selected="false" type="button">web</button>
+          <button class="filter-btn" data-filter="unity" role="tab" aria-selected="false" type="button">unity</button>
+          <button class="filter-btn" data-filter="design" role="tab" aria-selected="false" type="button">design</button>
+        </div>
+
+        <div class="project-grid">
+
+          <article class="project-card" data-category="web">
+            <span class="project-tag tag-web">web</span>
+            <h3>This portfolio</h3>
+            <p>The site you're on now — CRT boot sequence, POST diagnostics, synthesized sound, and a
+              scroll-driven 3D cube for navigation. Vanilla HTML/CSS/JS, plus GSAP for the cube's animation.</p>
+          </article>
+
+          <article class="project-card stub" data-category="web">
+            <span class="project-tag tag-web">web</span>
+            <h3>Next web project</h3>
+            <p class="dim">// stub — swap in your next build, with a link and a screenshot</p>
+          </article>
+
+          <article class="project-card stub" data-category="unity">
+            <span class="project-tag tag-unity">unity</span>
+            <h3>Unity project</h3>
+            <p class="dim">// stub — title, short description, and a link or gif here</p>
+          </article>
+
+          <article class="project-card stub" data-category="unity">
+            <span class="project-tag tag-unity">unity</span>
+            <h3>Unity project</h3>
+            <p class="dim">// stub — title, short description, and a link or gif here</p>
+          </article>
+
+          <article class="project-card" data-category="design">
+            <img class="project-image" src="images/painting-01.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
+            <span class="project-tag tag-design">design</span>
+            <h3>Painting / design piece</h3>
+            <p class="dim">// swap the src above for your file, and update this title/description</p>
+          </article>
+
+          <article class="project-card" data-category="design">
+            <img class="project-image" src="images/painting-02.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
+            <span class="project-tag tag-design">design</span>
+            <h3>Painting / design piece</h3>
+            <p class="dim">// swap the src above for your file, and update this title/description</p>
+          </article>
+
         </div>
       </section>
 
-      <section class="widget-window" aria-label="Data stream visualization">
-        <div class="window-titlebar">
-          <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
-          <span class="window-title">DATA_STREAM.feed</span>
+      <section class="face-panel" data-panel="about">
+        <h2>&gt; whoami</h2>
+        <p class="lead">Eight-plus years across systems build, hardware maintenance and secure endpoint
+          deployment, including recent work on government devices for HMRC and the Home Office. Active UK
+          security clearance. Now building the front end to go with the back end I've spent a career keeping
+          running.</p>
+      </section>
+
+      <section class="face-panel" data-panel="skills">
+        <h2>&gt; ls /skills</h2>
+        <ul class="skill-grid">
+          <li>Active UK Security Clearance</li>
+          <li>Windows &amp; Linux systems administration</li>
+          <li>Secure endpoint deployment &amp; build</li>
+          <li>Hardware testing, QA &amp; fault diagnosis</li>
+          <li>Server &amp; MFP maintenance (HP, IBM, Sun)</li>
+          <li>ServiceNow ticketing &amp; SLA delivery</li>
+          <li>Scripting — Python, C#</li>
+          <li>Unity development</li>
+        </ul>
+      </section>
+
+      <section class="face-panel" data-panel="experience">
+        <h2>&gt; cat career_history.log</h2>
+        <div class="log-entry">
+          <div class="log-head"><span class="date">2025 — 2026</span><span class="title">Infrastructure Development — Endpoint Deployment, Fujitsu Services</span></div>
+          <p>Deployed and configured Windows endpoints for government laptop rollouts for HMRC and the Home Office, inside a secure, clearance-gated environment.</p>
         </div>
-        <div class="window-body no-pad">
-          <canvas id="matrix-canvas" width="220" height="220"></canvas>
+        <div class="log-entry">
+          <div class="log-head"><span class="date">2018 — 2022</span><span class="title">3rd Line / Field Engineer, Procurri Europe</span></div>
+          <p>Maintenance, QA and testing across servers, drives and enterprise systems. On-site placement at AstraZeneca, Macclesfield, keeping lab MFPs running and hitting SLA on ServiceNow.</p>
+        </div>
+        <div class="log-entry">
+          <div class="log-head"><span class="date">2017 — 2018</span><span class="title">System Build Engineer, Scan Computers</span></div>
+          <p>Built bespoke gaming PCs to spec — component selection, assembly, testing, QA.</p>
         </div>
       </section>
 
-    </aside>
+      <section class="face-panel" data-panel="contact">
+        <h2>&gt; contact --dean</h2>
+        <p><a href="mailto:d.c.edwards@hotmail.co.uk">d.c.edwards@hotmail.co.uk</a></p>
+        
+      </section>
 
-    <section class="main-window" aria-label="Dean Edwards profile">
-      <div class="window-titlebar">
-        <span class="dot dot-red"></span><span class="dot dot-amber"></span><span class="dot dot-green"></span>
-        <span class="window-title">DEAN_EDWARDS.profile — ACTIVE</span>
-      </div>
-      <div class="window-body main-content">
+    </div>
 
-        <section id="about" class="panel">
-          <h1>DEAN EDWARDS</h1>
-          <p class="role">IT Engineer / Field Engineer / Systems Build — Wigan, UK</p>
-          <p class="lead">Eight-plus years across systems build, hardware maintenance and secure endpoint
-            deployment, including recent work on government devices for HMRC and the Home Office. Active UK
-            security clearance. Now building the front end to go with the back end I've spent a career keeping
-            running.</p>
-          <a href="#top" class="to-top">↑ top</a>
-        </section>
-
-        <section id="skills" class="panel">
-          <h2>&gt; ls /skills</h2>
-          <ul class="skill-grid">
-            <li>Active UK Security Clearance</li>
-            <li>Windows &amp; Linux systems administration</li>
-            <li>Secure endpoint deployment &amp; build</li>
-            <li>Hardware testing, QA &amp; fault diagnosis</li>
-            <li>Server &amp; MFP maintenance (HP, IBM, Sun)</li>
-            <li>ServiceNow ticketing &amp; SLA delivery</li>
-            <li>Scripting — Python, C#</li>
-            <li>Unity development</li>
-          </ul>
-          <a href="#top" class="to-top">↑ top</a>
-        </section>
-
-        <section id="experience" class="panel">
-          <h2>&gt; cat career_history.log</h2>
-          <div class="log-entry">
-            <div class="log-head"><span class="date">2025 — 2026</span><span class="title">Infrastructure Development — Endpoint Deployment, Fujitsu Services</span></div>
-            <p>Deployed and configured Windows endpoints for government laptop rollouts for HMRC and the Home Office, inside a secure, clearance-gated environment.</p>
-          </div>
-          <div class="log-entry">
-            <div class="log-head"><span class="date">2018 — 2022</span><span class="title">3rd Line / Field Engineer, Procurri Europe</span></div>
-            <p>Maintenance, QA and testing across servers, drives and enterprise systems. On-site placement at AstraZeneca, Macclesfield, keeping lab MFPs running and hitting SLA on ServiceNow.</p>
-          </div>
-          <div class="log-entry">
-            <div class="log-head"><span class="date">2017 — 2018</span><span class="title">System Build Engineer, Scan Computers</span></div>
-            <p>Built bespoke gaming PCs to spec — component selection, assembly, testing, QA.</p>
-          </div>
-          <a href="#top" class="to-top">↑ top</a>
-        </section>
-
-        <section id="work" class="panel">
-          <h2>&gt; ls /projects</h2>
-
-          <div class="project-filters" role="tablist" aria-label="Filter projects by category">
-            <button class="filter-btn active" data-filter="all" role="tab" aria-selected="true" type="button">all</button>
-            <button class="filter-btn" data-filter="web" role="tab" aria-selected="false" type="button">web</button>
-            <button class="filter-btn" data-filter="unity" role="tab" aria-selected="false" type="button">unity</button>
-            <button class="filter-btn" data-filter="design" role="tab" aria-selected="false" type="button">design</button>
-          </div>
-
-          <div class="project-grid">
-
-            <article class="project-card" data-category="web">
-              <span class="project-tag tag-web">web</span>
-              <h3>This portfolio</h3>
-              <p>The site you're on now — CRT boot sequence, POST diagnostics, synthesized sound, and this
-                category filter. Vanilla HTML/CSS/JS, no frameworks.</p>
-            </article>
-
-            <article class="project-card stub" data-category="web">
-              <span class="project-tag tag-web">web</span>
-              <h3>Next web project</h3>
-              <p class="dim">// stub — swap in your next build, with a link and a screenshot</p>
-            </article>
-
-            <article class="project-card stub" data-category="unity">
-              <span class="project-tag tag-unity">unity</span>
-              <h3>Unity project</h3>
-              <p class="dim">// stub — title, short description, and a link or gif here</p>
-            </article>
-
-            <article class="project-card stub" data-category="unity">
-              <span class="project-tag tag-unity">unity</span>
-              <h3>Unity project</h3>
-              <p class="dim">// stub — title, short description, and a link or gif here</p>
-            </article>
-
-            <article class="project-card" data-category="design">
-              <img class="project-image" src="images/painting-01.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
-              <span class="project-tag tag-design">design</span>
-              <h3>Painting / design piece</h3>
-              <p class="dim">// swap the src above for your file, and update this title/description</p>
-            </article>
-
-            <article class="project-card" data-category="design">
-              <img class="project-image" src="images/painting-02.jpg" alt="Replace with a real description of this piece — subject, medium, mood" loading="lazy">
-              <span class="project-tag tag-design">design</span>
-              <h3>Painting / design piece</h3>
-              <p class="dim">// swap the src above for your file, and update this title/description</p>
-            </article>
-
-          </div>
-
-          <a href="#top" class="to-top">↑ top</a>
-        </section>
-
-        <section id="contact" class="panel">
-          <h2>&gt; contact --dean</h2>
-          <p><a href="mailto:d.c.edwards@hotmail.co.uk">Email Me</a></p>
-          <p><a href="https://www.linkedin.com/in/d34n0/">LinkedIn</a></p>
-          
-          <a href="#top" class="to-top">↑ top</a>
-        </section>
-
-      </div>
-    </section>
+    <div class="progress">
+      <button data-dot="0" data-index="0" type="button" aria-label="Dean Edwards" disabled></button>
+      <button data-dot="1" data-index="1" type="button" aria-label="Work"></button>
+      <button data-dot="2" data-index="2" type="button" aria-label="About Me"></button>
+      <button data-dot="3" data-index="3" type="button" aria-label="Skills"></button>
+      <button data-dot="4" data-index="4" type="button" aria-label="Experience"></button>
+      <button data-dot="5" data-index="5" type="button" aria-label="Contact"></button>
+    </div>
 
   </div>
 </main>
@@ -201,6 +258,7 @@
   <p id="lightbox-caption"></p>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
