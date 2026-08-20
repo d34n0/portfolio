@@ -179,6 +179,34 @@ function enterSite() {
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// Below this width there's no room for the cube/shape beside a text panel
+// (see the matching `max-width: 760px` stacked-layout rules in style.css),
+// so sections stack vertically instead of shifting left. Every section's
+// "where does the shape/cube go while a panel is open" math reads this
+// rather than hardcoding the desktop side-by-side layout.
+const MOBILE_LAYOUT_BREAKPOINT = 760;
+function isMobileLayout() { return window.innerWidth <= MOBILE_LAYOUT_BREAKPOINT; }
+
+// Desktop shifts the cube/shape 27vw left to sit beside the docked panel;
+// on mobile the panel docks below instead, so nothing needs to shift sideways.
+function sectionShiftX() { return isMobileLayout() ? 0 : '-27vw'; }
+
+// Where a section's resting shape (circle/hexagon/triangle/square) settles:
+// beside the docked panel on desktop, or up near the top of the stacked
+// panel on mobile.
+function computeSectionRect() {
+  if (isMobileLayout()) {
+    const size = Math.min(0.5 * window.innerWidth, 220);
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight * 0.3;
+    return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
+  }
+  const size = Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
+  const centerX = window.innerWidth / 2 - 0.27 * window.innerWidth;
+  const centerY = window.innerHeight / 2;
+  return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
+}
+
 // Only one navigator drives scroll/touch/key input at a time; the section
 // morphs flip this between them: 'cube' | 'work-triangle' | 'work-grid' |
 // 'skills' | 'about' | 'experience' | 'contact'. currentFaceKey tracks the
@@ -755,8 +783,7 @@ function initWorkMorph(workGrid) {
   const gridPanel = workGrid ? workGrid.panelEl : null;
   if (!workFace || !cubeScene || !triangleStage || !rotor || typeof gsap === 'undefined') return;
 
-  const SHIFT = '-27vw';
-  gsap.set(triangleStage, { opacity: 0, scale: 1, x: SHIFT });
+  gsap.set(triangleStage, { opacity: 0, scale: 1, x: sectionShiftX() });
 
   // ---- Fold proxy: a standalone SVG that stands in for the "Work" face
   // during the morph. It starts exactly over the real face, folds its square
@@ -783,13 +810,6 @@ function initWorkMorph(workGrid) {
     return a.map((p, i) => [p[0] + (b[i][0] - p[0]) * t, p[1] + (b[i][1] - p[1]) * t]);
   }
 
-  function triangleTargetRect() {
-    const size = Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
-    const centerX = window.innerWidth / 2 - 0.27 * window.innerWidth;
-    const centerY = window.innerHeight / 2;
-    return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
-  }
-
   // Cached so the reverse (unfold) morph knows where the face rests at full
   // cube size — by the time you click back, the cube is shrunk/hidden, so
   // workFace.getBoundingClientRect() would return the wrong (tiny) rect.
@@ -798,7 +818,7 @@ function initWorkMorph(workGrid) {
   function runFoldMorph() {
     const from = workFace.getBoundingClientRect();
     cachedFaceRect = from;
-    const to = triangleTargetRect();
+    const to = computeSectionRect();
 
     gsap.set(proxy, {
       position: 'fixed', left: from.left, top: from.top, width: from.width, height: from.height,
@@ -826,7 +846,7 @@ function initWorkMorph(workGrid) {
   }
 
   function runUnfoldMorph() {
-    const from = triangleTargetRect();
+    const from = computeSectionRect();
     const to = cachedFaceRect || workFace.getBoundingClientRect();
 
     gsap.set(proxy, {
@@ -862,7 +882,7 @@ function initWorkMorph(workGrid) {
     runFoldMorph();
     gsap.timeline()
       .set(triangleStage, { scale: 1 }, 0)
-      .to(cubeScene, { x: SHIFT, scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' })
       .set(triangleStage, { pointerEvents: 'auto' }, 0.72)
@@ -931,8 +951,6 @@ function initWorkMorph(workGrid) {
 // a square — while sliding left, using the same independent-per-point lerp
 // trick as the Work triangle, generalized to any point count. ----
 
-const SECTION_SHIFT = '-27vw';
-
 function regularPolygonPoints(sides, radius, rotationDeg) {
   const pts = [];
   for (let i = 0; i < sides; i++) {
@@ -958,13 +976,6 @@ function rectPerimeterPoints(n) {
 
 function lerpShapePoints(a, b, t) {
   return a.map((p, i) => [p[0] + (b[i][0] - p[0]) * t, p[1] + (b[i][1] - p[1]) * t]);
-}
-
-function sectionTargetRect() {
-  const size = Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
-  const centerX = window.innerWidth / 2 - 0.27 * window.innerWidth;
-  const centerY = window.innerHeight / 2;
-  return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
 }
 
 // A standalone SVG proxy — independent of the Work triangle's own proxy —
@@ -1009,6 +1020,61 @@ function createSectionProxy() {
   return { el: proxy, morph };
 }
 
+// ---- Decode-in text effect: reveals a string left-to-right, showing random
+// glyphs in place of characters not yet "resolved". Used whenever a section
+// panel's copy appears or changes, for a terminal-decrypt feel. ----
+const DECODE_GLYPHS = '#$%&*+/<=>?@[]^_{|}~01';
+
+function decodeReveal(el, text, opts = {}) {
+  if (!el) return;
+  if (typeof gsap === 'undefined' || prefersReducedMotion) {
+    el.textContent = text;
+    return;
+  }
+  const chars = text.split('');
+  const len = chars.length;
+  if (!len) { el.textContent = ''; return; }
+
+  const msPerChar = opts.msPerChar ?? 16;
+  const duration = Math.min(opts.maxDuration ?? 0.7, Math.max(opts.minDuration ?? 0.18, (len * msPerChar) / 1000));
+
+  const state = { p: 0 };
+  gsap.killTweensOf(state);
+  gsap.fromTo(state, { p: 0 }, {
+    p: 1,
+    duration,
+    delay: opts.delay || 0,
+    ease: 'none',
+    onUpdate: () => {
+      const revealCount = Math.floor(state.p * len);
+      let out = '';
+      for (let i = 0; i < len; i++) {
+        const c = chars[i];
+        out += (i < revealCount || c === ' ' || c === '\n')
+          ? c
+          : DECODE_GLYPHS[(Math.random() * DECODE_GLYPHS.length) | 0];
+      }
+      el.textContent = out;
+    },
+    onComplete: () => { el.textContent = text; },
+  });
+}
+
+// Snapshots the current text of each matched element (before anything is
+// scrambled) so the reveal always has the real string to animate towards,
+// then plays the decode with a small per-element stagger, top-to-bottom.
+function prepareDecodeTargets(container, selector) {
+  if (!container) return [];
+  return [...container.querySelectorAll(selector)].map((el) => ({ el, text: el.textContent }));
+}
+
+function playDecode(targets, opts = {}) {
+  const stagger = opts.stagger ?? 0.05;
+  targets.forEach(({ el, text }, i) => {
+    decodeReveal(el, text, { ...opts, delay: (opts.delay || 0) + i * stagger });
+  });
+}
+
 // ---- About / Experience / Contact: single-tier sections with no rotation.
 // The fold proxy morphs the face into the target shape and just stays there
 // (stayVisible) as the resting decorative shape while its content panel
@@ -1035,6 +1101,7 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
     proxy.el.appendChild(photoSlot);
   }
 
+  const decodeTargets = prepareDecodeTargets(panel, 'h2, p, li, .date, .title, .contact-link');
   let cachedFaceRect = null;
 
   function morphIn() {
@@ -1045,17 +1112,18 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
 
     const from = face.getBoundingClientRect();
     cachedFaceRect = from;
-    const to = sectionTargetRect();
+    const to = computeSectionRect();
     const tl = proxy.morph(from, to, restPoints, shapePoints, { duration: 0.75, stayVisible: true });
     tl.set(proxy.el, { pointerEvents: 'auto' });
     if (photoSlot) tl.to(photoSlot, { opacity: 1, duration: 0.3, ease: 'power1.out' }, '-=0.15');
 
     gsap.timeline()
-      .to(cubeScene, { x: SECTION_SHIFT, scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' });
 
     panel.classList.add('visible');
+    playDecode(decodeTargets, { delay: 0.35 });
   }
 
   function morphOut() {
@@ -1067,7 +1135,7 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
     gsap.set(proxy.el, { pointerEvents: 'none' });
     if (photoSlot) gsap.set(photoSlot, { opacity: 0 });
 
-    const from = sectionTargetRect();
+    const from = computeSectionRect();
     const to = cachedFaceRect || face.getBoundingClientRect();
     proxy.morph(from, to, shapePoints, restPoints, { duration: 0.75, stayVisible: false });
 
@@ -1129,7 +1197,7 @@ function initSkillsSection() {
   const totalDuration = SKILLS_PAGES.length - 1;
   const restPoints = regularPolygonPoints(SIDES, 47, -90);
   polygon.setAttribute('points', restPoints.map((p) => p.join(',')).join(' '));
-  gsap.set(stage, { opacity: 0, x: SECTION_SHIFT, pointerEvents: 'none' });
+  gsap.set(stage, { opacity: 0, x: sectionShiftX(), pointerEvents: 'none' });
 
   if (panelDots) {
     SKILLS_PAGES.forEach(() => {
@@ -1139,7 +1207,7 @@ function initSkillsSection() {
     });
   }
 
-  function showPage(index) {
+  function showPage(index, opts = {}) {
     const page = SKILLS_PAGES[index];
     panelTitle.textContent = page.title;
     panelList.innerHTML = '';
@@ -1151,6 +1219,10 @@ function initSkillsSection() {
     if (panelDots) {
       [...panelDots.children].forEach((dot, i) => dot.classList.toggle('active', i === index));
     }
+    playDecode(
+      [{ el: panelTitle, text: page.title }, ...page.items.map((item, i) => ({ el: panelList.children[i], text: item }))],
+      opts,
+    );
   }
   showPage(0);
 
@@ -1207,17 +1279,18 @@ function initSkillsSection() {
 
     const from = face.getBoundingClientRect();
     cachedFaceRect = from;
-    const to = sectionTargetRect();
+    const to = computeSectionRect();
     proxy.morph(from, to, rectPoints, restPoints, { duration: 0.75, stayVisible: false });
 
     gsap.timeline()
-      .to(cubeScene, { x: SECTION_SHIFT, scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' })
       .set(stage, { pointerEvents: 'auto' }, 0.68)
       .fromTo(stage, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.68);
 
     panel.classList.add('visible');
+    showPage(activeIndex, { delay: 0.35 });
   }
 
   function morphOut() {
@@ -1227,7 +1300,7 @@ function initSkillsSection() {
     setSectionBackVisible(false);
     panel.classList.remove('visible');
 
-    const from = sectionTargetRect();
+    const from = computeSectionRect();
     const to = cachedFaceRect || face.getBoundingClientRect();
     proxy.morph(from, to, restPoints, rectPoints, { duration: 0.75, stayVisible: false });
 

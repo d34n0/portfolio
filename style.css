@@ -373,6 +373,7 @@ html {
   perspective: 1100px;
   flex: 0 0 auto;
   animation: cube-float 4.5s ease-in-out infinite;
+  will-change: transform;
 }
 .scene::before {
   content: "";
@@ -394,6 +395,7 @@ html {
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
+  will-change: transform;
 }
 
 .face {
@@ -413,6 +415,8 @@ html {
     0 0 42px var(--glow-mid),
     inset 0 0 20px var(--glow-soft);
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 .face-label {
   font-family: var(--font-mono);
@@ -420,6 +424,13 @@ html {
   letter-spacing: 1px;
   color: var(--phosphor);
   text-shadow: 0 0 8px color-mix(in srgb, var(--phosphor) 40%, transparent);
+  text-align: center;
+}
+.face-subtitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.5px;
+  color: var(--phosphor-dim);
   text-align: center;
 }
 
@@ -816,18 +827,19 @@ h2 {
 
 /* Sits inside the "About" fold proxy once it's settled into a circle,
    making the shape itself the photo frame — see initStaticSection's
-   showPhoto option in script.js. */
+   photoSrc option in script.js. The 5% inset (vs. the polygon's own ~3%)
+   leaves a thin mat of background between the stroke and the photo; no
+   padding/border of its own, or the image would sit inset from that ring
+   instead of filling it. */
 .proxy-photo-slot {
   position: absolute;
   inset: 5%;
   border-radius: 50%;
   overflow: hidden;
-  border: 1px dashed var(--phosphor-dim);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: var(--space-4);
   font-size: var(--text-sm);
   color: var(--phosphor-dim);
   background: var(--panel-bg-soft);
@@ -993,5 +1005,58 @@ h2 {
 }
 #lightbox-close:hover, #lightbox-close:focus-visible {
   color: var(--amber);
-  border-color: var(--amber);
+}
+
+/* ---------- RESPONSIVE: STACKED LAYOUT FOR NARROW VIEWPORTS ----------
+   Below this width there's no room for the cube/shape to sit beside a text
+   panel, so sections stack instead: shape near the top, content panel
+   docked along the bottom. Mirrors the desktop "shift 27vw left" model but
+   shifts up instead — see isMobileLayout()/sectionShiftX()/
+   computeSectionRect() in script.js, which switch to this same layout. */
+@media (max-width: 760px) {
+  :root {
+    --cube-size: clamp(190px, 58vmin, 300px);
+  }
+
+  #cube-stage {
+    align-items: flex-start;
+    padding-top: 8vh;
+  }
+
+  #triangle-stage,
+  #skills-stage {
+    align-items: flex-start;
+    padding-top: 6vh;
+  }
+
+  .tri-wrap {
+    width: min(52vmin, 230px);
+    height: min(52vmin, 230px);
+  }
+
+  .section-panel {
+    top: auto;
+    bottom: 2vh;
+    left: 50%;
+    width: 92vw;
+    max-width: none;
+    max-height: 48vh;
+    transform: translateX(-50%);
+  }
+
+  #work-grid-panel.expanded {
+    /* Clears the fixed "← Back" button (top: var(--space-6) ~1.5rem tall) so
+       the grid title doesn't sit underneath it. */
+    top: 4.5rem;
+    left: 3vw;
+    width: 94vw;
+    max-height: calc(92vh - 2.5rem);
+  }
+
+  #work-grid {
+    grid-template-columns: 1fr;
+  }
+  #work-grid-panel.expanded #work-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
 }
