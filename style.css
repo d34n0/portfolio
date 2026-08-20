@@ -97,7 +97,7 @@ html {
   background: radial-gradient(ellipse at center, #0c1310 0%, #05070a 55%, #000 100%);
   overflow: hidden;
   z-index: 10;
-  transition: opacity 1s ease;
+  transition: opacity 0.5s ease;
 }
 #scene.hidden {
   opacity: 0;
@@ -128,7 +128,7 @@ html {
   height: min(80vh, 620px);
   transform: scale(0.045);
   transform-origin: center center;
-  transition: transform 2.4s cubic-bezier(.6,0,.2,1);
+  transition: transform 1.2s cubic-bezier(.6,0,.2,1);
   will-change: transform;
 }
 #monitor.zoomed {
@@ -1018,7 +1018,10 @@ h2 {
     --cube-size: clamp(190px, 58vmin, 300px);
   }
 
-  #triangle-stage,
+  /* Skills still shows its panel immediately on entry, so its hexagon moves
+     to the top right away. The triangle stays centered until a category is
+     picked — see selectCategory()/sectionShiftVector() in script.js, which
+     shift it (via transform, not this flex alignment) only at that point. */
   #skills-stage {
     align-items: flex-start;
     padding-top: 6vh;

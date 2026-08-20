@@ -71,7 +71,7 @@ const POST_LINES = [
 function runPost(lines, onDone) {
   let i = 0;
   function next() {
-    if (i >= lines.length) { setTimeout(onDone, 900); return; }
+    if (i >= lines.length) { setTimeout(onDone, 400); return; }
     const { text, cls, tick: doTick, chime: doChime } = lines[i];
     const span = document.createElement('div');
     if (cls) span.className = cls;
@@ -80,7 +80,7 @@ function runPost(lines, onDone) {
     if (doTick) tick();
     if (doChime) chime();
     i++;
-    setTimeout(next, text ? 260 + Math.random() * 120 : 120);
+    setTimeout(next, text ? 110 + Math.random() * 60 : 50);
   }
   next();
 }
@@ -99,14 +99,14 @@ const siteEl    = document.getElementById('site');
 function typeLines(lines, onDone) {
   let i = 0;
   function next() {
-    if (i >= lines.length) { setTimeout(onDone, 700); return; }
+    if (i >= lines.length) { setTimeout(onDone, 300); return; }
     const { text, cls } = lines[i];
     const span = document.createElement('div');
     if (cls) span.className = cls;
     span.textContent = text || '\u00A0';
     bootLog.appendChild(span);
     i++;
-    setTimeout(next, text ? 220 + Math.random() * 140 : 90);
+    setTimeout(next, text ? 90 + Math.random() * 60 : 40);
   }
   next();
 }
@@ -135,9 +135,9 @@ function checkKey() {
         screen.classList.remove('degauss');
         void screen.offsetWidth; // restart animation
         screen.classList.add('degauss');
-        setTimeout(() => runPost(POST_LINES, enterSite), 500);
+        setTimeout(() => runPost(POST_LINES, enterSite), 250);
       }, 400);
-    }, 1100);
+    }, 550);
   } else {
     feedback.textContent = 'ACCESS DENIED — KEY DOES NOT MATCH BUILD REFERENCE';
     feedback.className = 'deny';
@@ -152,7 +152,7 @@ function checkKey() {
     setTimeout(() => {
       accessDenied.classList.add('fade-out');
       setTimeout(() => { accessDenied.hidden = true; }, 400);
-    }, 900);
+    }, 500);
   }
 }
 
@@ -174,7 +174,7 @@ function enterSite() {
     initStaticSection('contact', 28, 0);
     initSectionBackControl();
     initFbmBackground();
-  }, 1000);
+  }, 500); // matches #scene's opacity transition duration in style.css
 }
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -205,6 +205,24 @@ function computeSectionRect() {
   const centerX = window.innerWidth / 2 - 0.27 * window.innerWidth;
   const centerY = window.innerHeight / 2;
   return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
+}
+
+// Dead center of the screen — where Work's triangle rests while just
+// browsing categories, before anything else is competing for the space.
+function computeCenteredRect() {
+  const size = isMobileLayout()
+    ? Math.min(0.5 * window.innerWidth, 220)
+    : Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
+}
+
+// How far the triangle moves once a category is selected and the docked
+// grid needs room beside (desktop) or below (mobile) it — matches the
+// offset baked into computeSectionRect()'s two branches.
+function sectionShiftVector() {
+  return isMobileLayout() ? { x: 0, y: '-20vh' } : { x: '-27vw', y: 0 };
 }
 
 // Only one navigator drives scroll/touch/key input at a time; the section
@@ -430,15 +448,19 @@ function initCubeNavigation() {
 
   // Same "roll it like a die" approach as the reference cube: each segment only
   // touches one axis relative to the last, so every in-between orientation is a
-  // real, undistorted cube pose — except left → bottom, which pitches and yaws
-  // at once for a diagonal roll instead of two separate turns.
+  // real, undistorted cube pose — except home → work and skills → experience,
+  // which pitch and yaw at once for a diagonal roll instead of a flat
+  // single-axis turn. Work sits on the physical face right of home (not the
+  // front) specifically so that first roll is a clean single diagonal move,
+  // with no need to dip through an off-axis waypoint and back — see the
+  // matching data-face reassignment on the .face divs in index.html.
   const states = [
     { key: 'home',       rotateX: -90, rotateY: 0    }, // top
-    { key: 'work',       rotateX: 0,   rotateY: 0    }, // front
-    { key: 'about',      rotateX: 0,   rotateY: -90  }, // right
-    { key: 'skills',     rotateX: 0,   rotateY: -180 }, // back
-    { key: 'experience', rotateX: 0,   rotateY: -270 }, // left
-    { key: 'contact',    rotateX: 90,  rotateY: -360 }, // bottom (diagonal from left)
+    { key: 'work',       rotateX: 0,   rotateY: -90  }, // right (diagonal from home)
+    { key: 'about',      rotateX: 0,   rotateY: -180 }, // back
+    { key: 'skills',     rotateX: 0,   rotateY: -270 }, // left
+    { key: 'experience', rotateX: 90,  rotateY: -360 }, // bottom (diagonal from skills)
+    { key: 'contact',    rotateX: 0,   rotateY: -360 }, // front
   ];
 
   gsap.set(cubeEl, { rotateX: states[0].rotateX, rotateY: states[0].rotateY });
@@ -783,15 +805,16 @@ function initWorkMorph(workGrid) {
   const gridPanel = workGrid ? workGrid.panelEl : null;
   if (!workFace || !cubeScene || !triangleStage || !rotor || typeof gsap === 'undefined') return;
 
-  gsap.set(triangleStage, { opacity: 0, scale: 1, x: sectionShiftX() });
+  gsap.set(triangleStage, { opacity: 0, scale: 1, x: 0, y: 0 });
 
   // ---- Fold proxy: a standalone SVG that stands in for the "Work" face
   // during the morph. It starts exactly over the real face, folds its square
   // silhouette in half into a right triangle (points collapse onto the
   // diagonal), then reshapes that into the equilateral triangle's
-  // proportions while its container slides/shrinks to the final spot —
-  // sliding left the whole time — before crossfading into the real,
-  // interactive triangle. ----
+  // proportions while its container slides/shrinks to dead center — where
+  // the triangle rests while just browsing categories — before crossfading
+  // into the real, interactive triangle. It only moves aside once a
+  // category is selected (see selectCategory() below). ----
   const proxy = document.createElement('div');
   proxy.className = 'work-morph-proxy';
   proxy.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><polygon></polygon></svg>';
@@ -818,7 +841,7 @@ function initWorkMorph(workGrid) {
   function runFoldMorph() {
     const from = workFace.getBoundingClientRect();
     cachedFaceRect = from;
-    const to = computeSectionRect();
+    const to = computeCenteredRect();
 
     gsap.set(proxy, {
       position: 'fixed', left: from.left, top: from.top, width: from.width, height: from.height,
@@ -846,7 +869,7 @@ function initWorkMorph(workGrid) {
   }
 
   function runUnfoldMorph() {
-    const from = computeSectionRect();
+    const from = computeCenteredRect();
     const to = cachedFaceRect || workFace.getBoundingClientRect();
 
     gsap.set(proxy, {
@@ -882,7 +905,7 @@ function initWorkMorph(workGrid) {
     runFoldMorph();
     gsap.timeline()
       .set(triangleStage, { scale: 1 }, 0)
-      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' })
       .set(triangleStage, { pointerEvents: 'auto' }, 0.72)
@@ -902,6 +925,8 @@ function initWorkMorph(workGrid) {
   function selectCategory() {
     if (interactionMode !== 'work-triangle' || !gridPanel) return;
     interactionMode = 'work-selected';
+    const shift = sectionShiftVector();
+    gsap.to(triangleStage, { x: shift.x, y: shift.y, duration: 0.6, ease: 'power2.inOut' });
     gridPanel.classList.add('visible');
     if (rotor) rotor.setAttribute('aria-label', 'Back to categories');
   }
@@ -909,6 +934,7 @@ function initWorkMorph(workGrid) {
   function deselectCategory() {
     if (interactionMode !== 'work-selected' || !gridPanel) return;
     interactionMode = 'work-triangle';
+    gsap.to(triangleStage, { x: 0, y: 0, duration: 0.6, ease: 'power2.inOut' });
     gridPanel.classList.remove('visible');
     if (rotor) rotor.setAttribute('aria-label', 'View this category');
   }
@@ -924,11 +950,18 @@ function initWorkMorph(workGrid) {
       .to(triangleStage, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'visible' }, 0.65)
       .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.7)
-      .set(cubeScene, { x: 0, scale: 1 }, 0.72)
+      // The unfold proxy is already full cube size by now (see
+      // runUnfoldMorph's reshape, which finishes at 0.8) — snapping the real
+      // cube to scale 1 here, while it's still invisible, means the two
+      // never differ in size. Only opacity needs to crossfade, timed to
+      // exactly match the proxy's own fade-out below, so it reads as one
+      // shape handing off rather than a square dissolving and a separate,
+      // still-growing cube popping in after it.
+      .set(cubeScene, { scale: 1 }, 0.75)
       .fromTo(cubeScene,
         { opacity: 0 },
-        { opacity: 1, duration: 0.35, ease: 'power1.out' },
-        0.72);
+        { opacity: 1, duration: 0.15, ease: 'power1.out' },
+        0.75);
   }
 
   function enterGrid() {
@@ -1425,6 +1458,6 @@ filterButtons.forEach((btn) => {
 window.addEventListener('load', () => {
   setTimeout(() => {
     monitor.classList.add('zoomed');
-    setTimeout(() => typeLines(BOOT_LINES, revealPrompt), 2500);
-  }, 700);
+    setTimeout(() => typeLines(BOOT_LINES, revealPrompt), 1200);
+  }, 350);
 });
