@@ -890,7 +890,27 @@ function initWorkMorph(workGrid) {
         { opacity: 0 },
         { opacity: 1, duration: 0.35, ease: 'power1.out' },
         0.72);
-    if (gridPanel) gridPanel.classList.add('visible');
+    if (rotor) rotor.setAttribute('aria-label', 'View this category');
+  }
+
+  // ---- Selecting a category: the triangle alone owns scroll/touch while
+  // browsing (see initSceneInput's activeNav — it only claims the wheel for
+  // 'work-triangle'). Revealing the docked grid here, in a separate
+  // 'work-selected' mode, means the wheel handler stops matching once it's
+  // showing, so the gesture falls through to the grid's own native scroll
+  // instead of also spinning the triangle underneath it. ----
+  function selectCategory() {
+    if (interactionMode !== 'work-triangle' || !gridPanel) return;
+    interactionMode = 'work-selected';
+    gridPanel.classList.add('visible');
+    if (rotor) rotor.setAttribute('aria-label', 'Back to categories');
+  }
+
+  function deselectCategory() {
+    if (interactionMode !== 'work-selected' || !gridPanel) return;
+    interactionMode = 'work-triangle';
+    gridPanel.classList.remove('visible');
+    if (rotor) rotor.setAttribute('aria-label', 'View this category');
   }
 
   function morphToCube() {
@@ -898,7 +918,6 @@ function initWorkMorph(workGrid) {
     interactionMode = 'cube';
     activeSection = null;
     setSectionBackVisible(false);
-    if (gridPanel) gridPanel.classList.remove('visible');
     runUnfoldMorph();
     gsap.timeline()
       .set(triangleStage, { pointerEvents: 'none' }, 0)
@@ -913,7 +932,7 @@ function initWorkMorph(workGrid) {
   }
 
   function enterGrid() {
-    if (interactionMode !== 'work-triangle' || !gridPanel) return;
+    if (interactionMode !== 'work-selected' || !gridPanel) return;
     interactionMode = 'work-grid';
     gridPanel.classList.add('expanded');
     gsap.timeline()
@@ -923,7 +942,7 @@ function initWorkMorph(workGrid) {
 
   function collapseGrid() {
     if (interactionMode !== 'work-grid' || !gridPanel) return;
-    interactionMode = 'work-triangle';
+    interactionMode = 'work-selected';
     gridPanel.classList.remove('expanded');
     gsap.timeline()
       .set(triangleStage, { pointerEvents: 'auto' })
@@ -932,6 +951,7 @@ function initWorkMorph(workGrid) {
 
   function goBack() {
     if (interactionMode === 'work-grid') collapseGrid();
+    else if (interactionMode === 'work-selected') deselectCategory();
     else if (interactionMode === 'work-triangle') morphToCube();
   }
 
@@ -939,7 +959,10 @@ function initWorkMorph(workGrid) {
     if (currentFaceKey === 'work' && interactionMode === 'cube') morphToTriangle();
   });
 
-  rotor.addEventListener('click', goBack);
+  rotor.addEventListener('click', () => {
+    if (interactionMode === 'work-triangle') selectCategory();
+    else if (interactionMode === 'work-selected') deselectCategory();
+  });
   if (gridHeader) gridHeader.addEventListener('click', enterGrid);
 
   sectionGoBack.work = goBack;
