@@ -44,7 +44,10 @@ export function createSceneRig(container, { fov = 28, cameraDistance = 4.2 } = {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 100);
+  // far bumped from 100 to 150: the skills hexagon dollies the camera out to
+  // distance 90 to flatten toward a near-orthographic, equal-sided hexagon
+  // (see HEX_DISTANCE in script.js) — 100 would've clipped it.
+  const camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 150);
   camera.position.set(0, 0, cameraDistance);
   camera.lookAt(0, 0, 0);
 
@@ -86,6 +89,8 @@ export function createShapeNavigator({
   let targetP = 0;
   let activeIndex = 0;
   let settleTimer = null;
+  let paused = false;
+  let stopped = false;
   const totalDuration = states.length - 1;
 
   function rotationAt(p) {
@@ -114,9 +119,25 @@ export function createShapeNavigator({
   }
 
   function renderLoop() {
-    currentP += (targetP - currentP) * lerpFactor;
-    if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
-    applyProgress(currentP);
+    // Stopped (permanently discarded, unlike a pause): don't render, and
+    // don't reschedule — this is the difference between the two. A skills
+    // page-navigator gets recreated fresh each time the section is entered
+    // (see initSkillsSection), and without an actual stop the OLD one's rAF
+    // loop would run forever underneath, redundantly rendering the same
+    // scene every frame for the rest of the page's life.
+    if (stopped) return;
+    // Paused: some other code (a GSAP tween, another navigator sharing this
+    // same spinGroup) owns rotation right now — skip lerping/applying it,
+    // but keep rendering every frame so whatever that other driver sets is
+    // still visible. See the skills section's cube-tilt handoff, which pauses
+    // this navigator while it GSAP-tweens rotation directly, then later
+    // hands off to a second navigator (also built via this factory) driving
+    // z-only rotation on the same spinGroup — never two drivers active at once.
+    if (!paused) {
+      currentP += (targetP - currentP) * lerpFactor;
+      if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
+      applyProgress(currentP);
+    }
     renderer.render(scene, camera);
     // "settled" (for e.g. gating a label reveal) uses a much looser threshold
     // than the 0.0004 snap epsilon above: that epsilon exists to kill visible
@@ -125,7 +146,7 @@ export function createShapeNavigator({
     // (exponential lerp tails off asymptotically) — a full second of dead air
     // before a label would decode in. 0.01 is close enough to be visually
     // indistinguishable from fully settled, and fires in a few hundred ms.
-    if (onFrame) onFrame(currentP, activeIndex, Math.abs(targetP - currentP) < 0.01);
+    if (onFrame) onFrame(currentP, activeIndex, !paused && Math.abs(targetP - currentP) < 0.01);
     requestAnimationFrame(renderLoop);
   }
   applyProgress(0);
@@ -152,10 +173,27 @@ export function createShapeNavigator({
   // entirely (script.js:569-580) — not part of the shared nudge/goToIndex API.
   function setProgressRaw(p) { targetP = Math.max(0, Math.min(1, p)); }
 
+  function pause() { clearTimeout(settleTimer); paused = true; }
+  // Resuming re-arms from the CURRENT spinGroup rotation, not wherever
+  // currentP/targetP were left — after a pause, something else (a GSAP tilt
+  // tween) likely moved the spinGroup directly, so resuming at the old
+  // currentP would snap it back to a stale pose instead of continuing smoothly.
+  function resume(atIndex) {
+    const idx = atIndex != null ? atIndex : activeIndex;
+    activeIndex = idx;
+    currentP = idx / totalDuration;
+    targetP = currentP;
+    paused = false;
+  }
+  function stop() { clearTimeout(settleTimer); stopped = true; }
+
   return {
     nudge,
     goToIndex,
     setProgressRaw,
+    pause,
+    resume,
+    stop,
     markInteracted() {},
     get activeIndex() { return activeIndex; },
     get activeKey() { return states[activeIndex].key; },
@@ -317,10 +355,13 @@ export function buildCubeMesh({ container, faceKeysByBoxOrder }) {
   }));
   const mesh = new THREE.Mesh(geometry, materials);
   const outline = makeOutline(geometry, phosphor);
+  const hexOutline = buildHexOutline(SIZE, phosphor);
+  hexOutline.visible = false;
 
   const spinGroup = new THREE.Group();
   spinGroup.add(mesh);
   spinGroup.add(outline);
+  spinGroup.add(hexOutline);
   rig.scene.add(spinGroup);
 
   // BoxGeometry's 6 faces (2 triangles each) come in this fixed group order:
@@ -338,38 +379,29 @@ export function buildCubeMesh({ container, faceKeysByBoxOrder }) {
   const facesByKey = {};
   faceKeysByBoxOrder.forEach((key, i) => { facesByKey[key] = boxFaces[i]; });
 
-  return { ...rig, spinGroup, mesh, outline, facesByKey, materials };
+  return { ...rig, spinGroup, mesh, outline, hexOutline, facesByKey, materials };
 }
 
-// ---- Hexagon: a shallow CylinderGeometry instead of a flat SVG polygon —
-// gives it real depth for the first time, matching the now-genuinely-3D
-// cube/pyramid instead of being the one flat outlier. ----
-export function buildHexagonMesh({ container }) {
-  const rig = createSceneRig(container, { fov: 30, cameraDistance: 4 });
-
-  const RADIUS = 1;
-  const DEPTH = RADIUS * 0.12;
-  const geometry = new THREE.CylinderGeometry(RADIUS, RADIUS, DEPTH, 6);
-  // CylinderGeometry stands with its axis along Y by default (flat hex caps
-  // facing up/down) — rotate it so the caps face the camera (+Z) at rest
-  // instead, matching the old flat SVG hexagon's orientation. The rotor
-  // still spins around Z afterward (see initSkillsSection's states), same
-  // "coin spinning in the screen plane" motion the CSS rotate() gave it.
-  geometry.rotateX(Math.PI / 2);
-
-  const { color: fillColor } = parseCssColor(readCssColor('--panel-bg', 'rgba(4,10,7,0.85)'));
-  const phosphor = readCssColor('--phosphor', '#39ff88');
-
-  const material = new THREE.MeshBasicMaterial({ color: fillColor, side: THREE.FrontSide });
-  const mesh = new THREE.Mesh(geometry, material);
-  const outline = makeOutline(geometry, phosphor);
-
-  const spinGroup = new THREE.Group();
-  spinGroup.add(mesh);
-  spinGroup.add(outline);
-  rig.scene.add(spinGroup);
-
-  return { ...rig, spinGroup, mesh, outline };
+// ---- The cube's "hexagon" outline: when the cube is tilted to look straight
+// down its own body diagonal (see HEX_TILT_EULER in script.js), 3 faces
+// read as one flat regular hexagon. The cube's OWN normal outline (all 12
+// edges, depth-tested) doesn't read as that: the 3 edges from the near
+// corner still show, dividing the hexagon into 3 visible rhombi like an
+// ordinary isometric cube drawing. This builds a second, dedicated outline —
+// just the 6 "equator" edges connecting the two rings of mid-depth vertices,
+// none touching the near or far corner — for a clean, undivided hexagon
+// silhouette. Vertex loop order found by walking the actual edge adjacency
+// (not assumed), so it traces a proper hexagon rather than a self-intersecting
+// star if the vertex ordering were ever guessed wrong. ----
+function buildHexOutline(size, phosphorColor) {
+  const half = size / 2;
+  const loop = [
+    [-half, half, -half], [-half, half, half], [-half, -half, half],
+    [half, -half, half], [half, -half, -half], [half, half, -half],
+  ];
+  const points = loop.map((p) => new THREE.Vector3(...p));
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  return new THREE.LineLoop(geometry, new THREE.LineBasicMaterial({ color: phosphorColor }));
 }
 
 // ---- Project a local-space point (on a spinning mesh) to CSS pixel

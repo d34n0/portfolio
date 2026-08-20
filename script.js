@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  buildPyramidMesh, buildCubeMesh, buildHexagonMesh, createShapeNavigator,
+  buildPyramidMesh, buildCubeMesh, createShapeNavigator,
   projectToCanvasPx, raycastFaceIndex,
 } from './three-nav.js';
 
@@ -172,7 +172,7 @@ function enterSite() {
     const cubeNav = initCubeNavigation();
     const workGrid = initWorkGrid();
     const triangleNav = initTriangleNav((key) => workGrid && workGrid.show(key));
-    const skillsNav = initSkillsSection();
+    const skillsNav = initSkillsSection(cubeNav);
     initSceneInput(cubeNav, triangleNav, skillsNav);
     initWorkMorph(workGrid, triangleNav);
     initStaticSection('about', 28, 0, 47, 'images/profile.jpg');
@@ -567,6 +567,15 @@ function initCubeNavigation() {
   // (initWorkMorph, initStaticSection, initSkillsSection) keeps listening
   // on those exact elements, completely unchanged.
   canvas.addEventListener('click', (e) => {
+    // While tilted into the skills hexagon, the cube isn't showing any of
+    // its 6 named faces — a raycast hit here wouldn't resolve to a
+    // meaningful key. Route straight to the skills section's own exit
+    // instead (same "click the shape to go back" gesture every other
+    // section uses).
+    if (interactionMode === 'skills') {
+      if (sectionGoBack.skills) sectionGoBack.skills();
+      return;
+    }
     const idx = raycastFaceIndex(e, canvas, built.camera, built.mesh);
     if (idx === null) return;
     const key = BOX_ORDER_KEYS[idx];
@@ -605,6 +614,20 @@ function initCubeNavigation() {
     goToIndex: nav.goToIndex,
     markInteracted,
     get activeIndex() { return activeIndexRef; },
+    // Exposed for the skills section, which drives this same cube mesh
+    // (tilting it to a hexagon-look pose in place, then docking it left)
+    // instead of building a separate shape — see initSkillsSection.
+    built,
+    nav,
+    canvas,
+    cubeScene: document.querySelector('.cube-slot'),
+    skillsFaceRotation: states.find((s) => s.key === 'skills').rotation,
+    skillsIndex: states.findIndex((s) => s.key === 'skills'),
+    hideLabelsForTilt() {
+      Object.values(labelEls).forEach((el) => { el.style.opacity = '0'; });
+      shownKey = null;
+      hiddenForTransit = true;
+    },
   };
 }
 
@@ -1312,6 +1335,9 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
 // paired with a content panel that pages through grouped skill text as you
 // rotate. Reuses the fold-proxy for the one-time entry/exit morph, then
 // hands off to its own real, interactive hexagon rotor. ----
+// One page per hexagon side (6). The first 3 are real; the last 3 are
+// placeholders — swap in real titles/items whenever there's a 4th, 5th,
+// 6th skill group to show, no code changes needed beyond editing this array.
 const SKILLS_PAGES = [
   {
     title: 'Systems & Security',
@@ -1325,32 +1351,109 @@ const SKILLS_PAGES = [
     title: 'Development',
     items: ['Scripting — Python, C#', 'Unity development'],
   },
+  {
+    title: 'Placeholder Skill 1',
+    items: ['Add a skill here', 'Add a skill here'],
+  },
+  {
+    title: 'Placeholder Skill 2',
+    items: ['Add a skill here', 'Add a skill here'],
+  },
+  {
+    title: 'Placeholder Skill 3',
+    items: ['Add a skill here', 'Add a skill here'],
+  },
 ];
 
-function initSkillsSection() {
+// Aligns the cube's body diagonal with the camera, so 3 faces read as one
+// flat regular hexagon — verified numerically (see three-nav.js's
+// buildHexOutline notes): at this exact tilt all 3 visible faces land at an
+// identical dot product (1/sqrt(3)) against the camera. Expressed directly
+// as the Euler x/y/z the main cube's spinGroup needs (not composed relative
+// to any face state), since GSAP tweens the spinGroup's rotation to this
+// absolute target regardless of which face it's coming from.
+const HEX_TILT = {
+  x: THREE.MathUtils.degToRad(45),
+  y: THREE.MathUtils.degToRad(-35.2644),
+  z: THREE.MathUtils.degToRad(15),
+};
+
+// The cube's normal camera (fov 48, needed for corner-rotation clipping
+// headroom during ordinary face-to-face rolls — see buildCubeMesh) is far
+// too wide-angle to project a REGULAR hexagon down the body diagonal: the 6
+// vertices split into two rings at noticeably different depths from camera,
+// and a wide/close perspective camera exaggerates that into very unequal
+// projected radii — a hexagon whose vertices don't all sit the same distance
+// from its own center reads as visibly irregular/"perspective-y", even
+// though its 6 edges happen to stay equal-length throughout (verified
+// numerically). Pushed to a near-orthographic dolly (fov 48/dist 3.6 ->
+// ~29% min/max vertex-radius mismatch; the previous fov 9.16/dist 20 only
+// got to ~4.5%, still visibly off; fov 2/dist 90 gets to ~1%, effectively a
+// regular hexagon) rather than swapping in a real THREE.OrthographicCamera,
+// since a genuine 0%-distortion camera isn't worth the complexity of a
+// second camera instance fighting the paused base navigator's own render
+// calls for this render target. So the camera itself zooms during the tilt
+// — animated together with the rotation, not swapped abruptly, since a
+// sudden fov/distance change alone would pop the cube to a visibly
+// different size.
+const HEX_FOV = 2;
+const HEX_DISTANCE = 90;
+
+// Euler angles wrap at 2*PI, and a straight lerp from e.g. -270deg to
+// -35deg would spin the long way around (234deg) instead of the short way
+// (125deg) — this finds the representation of `target` (mod 2*PI) nearest
+// to `current`, so GSAP always takes the short path regardless of which
+// face the cube is coming from.
+function nearestEquivalentAngle(current, target) {
+  const twoPi = Math.PI * 2;
+  const diff = (((target - current) % twoPi) + twoPi + Math.PI) % twoPi - Math.PI;
+  return current + diff;
+}
+
+// Paging between skill pages needs to spin the ALREADY-TILTED cube around
+// the CAMERA's view axis (world Z) — a pure on-screen roll, keeping the
+// same 3 faces toward the camera. Naively adding degrees to the tilted
+// spinGroup's rotation.z does NOT do this: Three.js's Euler XYZ order
+// applies rotation.z around the object's OWN local Z axis, which — once
+// X/Y have tilted the object — no longer points at the camera at all
+// (verified numerically: after this tilt, local Z world-points to
+// (-0.577,-0.577,0.577), nowhere near (0,0,1)). Composing the extra spin
+// as a proper world-space quaternion multiplication (applied outside/after
+// the tilt) and converting the result back to Euler gives the angles that
+// actually produce a screen-plane roll — verified numerically that all 3
+// pages still land on the same "3 faces at dot=1/sqrt(3)" hexagon view.
+function hexPageEuler(baseEuler, pageDeg) {
+  const qTilt = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(baseEuler.x, baseEuler.y, baseEuler.z, 'XYZ'),
+  );
+  const qSpin = new THREE.Quaternion().setFromAxisAngle(
+    new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(pageDeg),
+  );
+  const qTotal = qSpin.multiply(qTilt);
+  return new THREE.Euler().setFromQuaternion(qTotal, 'XYZ');
+}
+
+// ---- Skills: the persistent cube itself tilts to the hexagon pose above
+// (in place, full size — never a separate shape to size/position, which is
+// what let past-me end up with a scaled-down proxy that read as "bigger
+// than the cube" while both were visible mid-fade), then docks left once
+// it's already hexagon-shaped. Exiting reverses the exact same two steps in
+// the opposite order: undock first, then untilt — "as if it was a cube all
+// along." Paging through skill pages while docked spins the SAME spinGroup
+// around the camera's view axis (see hexPageEuler), via a second navigator
+// built fresh each visit; the main cube's own navigator is paused (not stopped —
+// it still renders every frame) for the duration and resumed once the
+// reverse tilt finishes. ----
+function initSkillsSection(cubeNav) {
   const face = document.querySelector('.face[data-face="skills"]');
-  const cubeScene = document.querySelector('.cube-slot');
   const dotsWrap = document.querySelector('.progress');
-  const stage = document.getElementById('skills-stage');
-  const container = document.querySelector('#skills-stage .tri-wrap');
   const panel = document.getElementById('skills-panel');
   const panelTitle = document.getElementById('skills-panel-title');
   const panelList = document.getElementById('skills-panel-list');
   const panelDots = document.getElementById('skills-panel-dots');
-  if (!face || !cubeScene || !stage || !container || !panel || typeof gsap === 'undefined') return null;
+  if (!cubeNav || !face || !panel || typeof gsap === 'undefined') return null;
 
-  const SIDES = 6;
-  // Still used by the fold/unfold proxy morph below (createSectionProxy) as
-  // its target/source shape — unrelated to the 3D rotor itself now.
-  const restPoints = regularPolygonPoints(SIDES, 47, -90);
-  gsap.set(stage, { opacity: 0, x: sectionShiftX(), pointerEvents: 'none' });
-
-  const built = buildHexagonMesh({ container });
-  const rotor = built.canvas;
-  rotor.id = 'skills-rotor';
-  rotor.setAttribute('role', 'button');
-  rotor.setAttribute('tabindex', '-1');
-  rotor.setAttribute('aria-label', 'Back to cube');
+  const { built, nav: cubeInternalNav, canvas, cubeScene, skillsFaceRotation, skillsIndex } = cubeNav;
 
   if (panelDots) {
     SKILLS_PAGES.forEach(() => {
@@ -1377,31 +1480,17 @@ function initSkillsSection() {
       opts,
     );
   }
-  showPage(0);
 
-  // Same STEP_DEG (360/6=60) per page-gap as the old CSS rotate() version,
-  // now driving the mesh's own Z rotation through the shared factory instead
-  // of a bespoke direct-transform rAF loop — folds skills onto the same
-  // pattern the cube/pyramid already use.
-  const deg = THREE.MathUtils.degToRad;
-  const states = SKILLS_PAGES.map((_, i) => ({ key: i, rotation: { z: deg(i * 60) } }));
-
-  const nav = createShapeNavigator({
-    scene: built.scene,
-    camera: built.camera,
-    renderer: built.renderer,
-    spinGroup: built.spinGroup,
-    states,
-    lerpFactor: prefersReducedMotion ? 1 : 0.16,
-    // Same sensitivity boost as the triangle — fewer sides in the rotation
-    // range (2 gaps across 3 pages) means the same wheel delta needs a lift.
-    sensitivityBoost: 3,
-    onFaceChange(index) { showPage(index); },
-  });
-
-  const proxy = createSectionProxy();
-  const rectPoints = rectPerimeterPoints(SIDES);
-  let cachedFaceRect = null;
+  // The Z-paging navigator, live only while docked in hexagon mode — see
+  // pageNav.stop() in morphOut (createShapeNavigator's rAF loop runs forever
+  // once started, so a fresh one each visit needs the old one actually
+  // stopped, not just discarded, or they'd pile up rendering forever).
+  let pageNav = null;
+  // Captured each entry so morphOut can restore the exact values, rather
+  // than assuming buildCubeMesh's constants (avoids the two files drifting
+  // out of sync if the cube's normal fov/distance ever changes).
+  let savedFov = null;
+  let savedCameraZ = null;
 
   function morphIn() {
     if (interactionMode !== 'cube') return;
@@ -1409,20 +1498,70 @@ function initSkillsSection() {
     activeSection = 'skills';
     setSectionBackVisible(true);
 
-    const from = face.getBoundingClientRect();
-    cachedFaceRect = from;
-    const to = computeSectionRect();
-    proxy.morph(from, to, rectPoints, restPoints, { duration: 0.75, stayVisible: false });
+    cubeInternalNav.pause();
+    cubeNav.hideLabelsForTilt();
+
+    const rot = built.spinGroup.rotation;
+    const targetX = nearestEquivalentAngle(rot.x, HEX_TILT.x);
+    const targetY = nearestEquivalentAngle(rot.y, HEX_TILT.y);
+    const targetZ = nearestEquivalentAngle(rot.z, HEX_TILT.z);
+    savedFov = built.camera.fov;
+    savedCameraZ = built.camera.position.z;
+    const camState = { fov: savedFov, z: savedCameraZ };
 
     gsap.timeline()
-      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' })
-      .set(stage, { pointerEvents: 'auto' }, 0.68)
-      .fromTo(stage, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.68);
-
-    panel.classList.add('visible');
-    showPage(nav.activeIndex, { delay: 0.35 });
+      // Tilt first, in place — the normal (depth-tested) outline stays on
+      // throughout, since the hex-only outline is only geometrically valid
+      // exactly at the target tilt; showing it mid-rotation would float
+      // free of the actual mesh edges.
+      .to(rot, { x: targetX, y: targetY, z: targetZ, duration: 0.5, ease: 'power2.inOut' }, 0)
+      // Dolly out + narrow the fov together, in step with the tilt — see
+      // HEX_FOV's derivation above for why the wide, close normal camera
+      // can't project a regular hexagon.
+      .to(camState, {
+        fov: HEX_FOV, z: HEX_DISTANCE, duration: 0.5, ease: 'power2.inOut',
+        onUpdate: () => {
+          built.camera.fov = camState.fov;
+          built.camera.position.z = camState.z;
+          built.camera.updateProjectionMatrix();
+        },
+      }, 0)
+      .call(() => {
+        built.outline.visible = false;
+        built.hexOutline.visible = true;
+      })
+      // Then dock left, already hexagon-shaped.
+      .to(cubeScene, { x: sectionShiftX(), duration: 0.4, ease: 'power2.inOut' })
+      .call(() => {
+        const tiltEuler = { x: targetX, y: targetY, z: targetZ };
+        pageNav = createShapeNavigator({
+          scene: built.scene,
+          camera: built.camera,
+          renderer: built.renderer,
+          spinGroup: built.spinGroup,
+          // Same "coin spin in the screen plane" motion the old flat hexagon
+          // had — see hexPageEuler for why this needs actual quaternion
+          // composition rather than just adding degrees to rotation.z.
+          states: SKILLS_PAGES.map((_, i) => {
+            const e = hexPageEuler(tiltEuler, i * 60);
+            return { key: i, rotation: { x: e.x, y: e.y, z: e.z } };
+          }),
+          lerpFactor: prefersReducedMotion ? 1 : 0.16,
+          // Kept at 3 even though there are now 5 gaps (6 pages) instead of
+          // 2 (3 pages): tried dropping this to match the cube's un-boosted
+          // default (reasoning that 5 gaps here now equals the cube's 5),
+          // but that made a single scroll gesture unable to reliably cross
+          // even one gap (verified: 10 consecutive wheel batches, 0 page
+          // advances). Keeping it at 3 reliably moves 1-2 pages per gesture.
+          sensitivityBoost: 3,
+          onFaceChange(index) { showPage(index); },
+        });
+        canvas.setAttribute('aria-label', 'Back to cube');
+        panel.classList.add('visible');
+        showPage(0, { delay: 0.1 });
+      });
   }
 
   function morphOut() {
@@ -1431,32 +1570,61 @@ function initSkillsSection() {
     activeSection = null;
     setSectionBackVisible(false);
     panel.classList.remove('visible');
+    if (pageNav) { pageNav.stop(); pageNav = null; }
 
-    const from = computeSectionRect();
-    const to = cachedFaceRect || face.getBoundingClientRect();
-    proxy.morph(from, to, restPoints, rectPoints, { duration: 0.75, stayVisible: false });
+    const rot = built.spinGroup.rotation;
+    const targetX = nearestEquivalentAngle(rot.x, skillsFaceRotation.x || 0);
+    const targetY = nearestEquivalentAngle(rot.y, skillsFaceRotation.y || 0);
+    const targetZ = nearestEquivalentAngle(rot.z, skillsFaceRotation.z || 0);
+    const camState = { fov: built.camera.fov, z: built.camera.position.z };
+    const restoreFov = savedFov != null ? savedFov : camState.fov;
+    const restoreZ = savedCameraZ != null ? savedCameraZ : camState.z;
 
     gsap.timeline()
-      .set(stage, { pointerEvents: 'none' }, 0)
-      .to(stage, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
-      .set(dotsWrap, { visibility: 'visible' }, 0.6)
-      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.65)
-      .set(cubeScene, { x: 0, scale: 1 }, 0.68)
-      .fromTo(cubeScene, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.68);
+      // Undock first, still hexagon-shaped.
+      .to(cubeScene, { x: 0, duration: 0.4, ease: 'power2.inOut' }, 0)
+      .call(() => {
+        built.outline.visible = true;
+        built.hexOutline.visible = false;
+      }, null, 0.4)
+      // Then untilt back to a normal cube face, as if it was a cube all along
+      // — camera zooms back in over the same span, reversing the dolly-out.
+      .to(rot, { x: targetX, y: targetY, z: targetZ, duration: 0.5, ease: 'power2.inOut' }, 0.4)
+      .to(camState, {
+        fov: restoreFov, z: restoreZ, duration: 0.5, ease: 'power2.inOut',
+        onUpdate: () => {
+          built.camera.fov = camState.fov;
+          built.camera.position.z = camState.z;
+          built.camera.updateProjectionMatrix();
+        },
+      }, 0.4)
+      .call(() => {
+        // resume() deliberately doesn't replay onFaceChange (it would
+        // re-trigger a label decode for a face that was never really left),
+        // so the aria-label update showFace() normally does needs restoring
+        // here explicitly.
+        cubeInternalNav.resume(skillsIndex);
+        canvas.setAttribute('aria-label', 'skills face');
+      })
+      .set(dotsWrap, { visibility: 'visible' }, '<')
+      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, '<');
   }
 
+  // Exit click is already handled by initCubeNavigation's own canvas click
+  // listener (it routes to sectionGoBack.skills whenever interactionMode is
+  // 'skills'), since there's no separate rotor element anymore — this is
+  // the entry trigger only, same pattern every other section uses.
   face.addEventListener('click', () => {
     if (currentFaceKey === 'skills' && interactionMode === 'cube') morphIn();
   });
-  rotor.addEventListener('click', morphOut);
 
   sectionGoBack.skills = morphOut;
 
   return {
-    nudge: nav.nudge,
-    goToIndex: nav.goToIndex,
+    nudge(delta) { if (pageNav) pageNav.nudge(delta); },
+    goToIndex(i) { if (pageNav) pageNav.goToIndex(i); },
     markInteracted() {},
-    get activeIndex() { return nav.activeIndex; },
+    get activeIndex() { return pageNav ? pageNav.activeIndex : 0; },
   };
 }
 

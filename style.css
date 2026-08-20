@@ -10,6 +10,10 @@
   /* ---- Color: reusable surfaces (the same translucent panel fill kept
      turning up hand-typed in a dozen places) ---- */
   --panel-bg: rgba(4, 10, 7, 0.85);
+  /* Same color, no alpha — for the rotating nav shapes and their morph
+     proxies, which are meant to read as solid/opaque, unlike the translucent
+     glass panels --panel-bg is normally used for. */
+  --panel-bg-solid: rgb(4, 10, 7);
   --panel-bg-soft: rgba(57, 255, 136, 0.03);
   --scrim: rgba(2, 4, 3, 0.92);
 
@@ -470,7 +474,12 @@ html {
   overflow: visible;
 }
 .work-morph-proxy polygon {
-  fill: var(--panel-bg);
+  /* Not var(--panel-bg) directly: its 0.85 alpha made the proxy translucent,
+     letting the cube (and its still-visible face label) show through from
+     underneath while both were mid-fade during the morph — looked like the
+     shape had grown bigger than the cube, since you were seeing both
+     overlapping at once instead of a clean handoff. */
+  fill: var(--panel-bg-solid);
   stroke: var(--phosphor);
   stroke-width: 3;
   stroke-linejoin: round;
@@ -543,20 +552,9 @@ html {
   white-space: nowrap;
 }
 
-/* Skills' hexagon is now rendered as a real Three.js CylinderGeometry (see
-   buildHexagonMesh, three-nav.js) instead of a flat spun SVG polygon — the
-   canvas it creates shares .shape-canvas (defined above) with the cube and
-   pyramid. */
-
-#skills-stage {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-}
+/* Skills no longer has its own stage/rotor element — entering "skills" tilts
+   the persistent cube itself (see HEX_TILT/initSkillsSection in script.js)
+   in place, then docks it left, reusing .cube-slot's own position/opacity. */
 
 /* ---------- SHARED: DOCKED CONTENT PANEL (center-right of the stage) ---------- */
 
@@ -1014,15 +1012,9 @@ h2 {
     --cube-size: clamp(190px, 58vmin, 300px);
   }
 
-  /* Skills still shows its panel immediately on entry, so its hexagon moves
-     to the top right away. The triangle stays centered until a category is
-     picked — see selectCategory()/sectionShiftVector() in script.js, which
-     shift it (via transform, not this flex alignment) only at that point. */
-  #skills-stage {
-    align-items: flex-start;
-    padding-top: 6vh;
-  }
-
+  /* The triangle stays centered until a category is picked — see
+     selectCategory()/sectionShiftVector() in script.js, which shift it (via
+     transform, not flex alignment) only at that point. */
   .tri-wrap {
     width: min(52vmin, 230px);
     height: min(52vmin, 230px);
