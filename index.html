@@ -48,28 +48,46 @@
 
     <div class="cube-slot">
       <div class="scene">
+        <!-- The Three.js canvas is created and appended here at runtime by
+             buildCubeMesh() (three-nav.js). The 6 divs below are no longer
+             visually rendered (see .face in style.css) — they exist purely
+             as click-dispatch targets and getBoundingClientRect() sources so
+             initWorkMorph/initStaticSection/initSkillsSection's existing
+             per-face wiring keeps working completely unchanged. Real face
+             text lives in .cube-labels below instead, positioned every
+             frame by projecting the cube mesh's face centers into screen
+             space. -->
         <div id="cube">
-          <div class="face face-top"    data-face="home"><span class="face-label">Dean Edwards</span><span class="face-subtitle">Web Design &amp; Development</span></div>
-          <div class="face face-right"  data-face="work"><span class="face-label">Work</span></div>
-          <div class="face face-back"   data-face="about"><span class="face-label">About Me</span></div>
-          <div class="face face-left"   data-face="skills"><span class="face-label">Skills</span></div>
-          <div class="face face-bottom" data-face="experience"><span class="face-label">Experience</span></div>
-          <div class="face face-front"  data-face="contact"><span class="face-label">Contact</span></div>
+          <div class="face" data-face="home" aria-hidden="true"></div>
+          <div class="face" data-face="work" aria-hidden="true"></div>
+          <div class="face" data-face="about" aria-hidden="true"></div>
+          <div class="face" data-face="skills" aria-hidden="true"></div>
+          <div class="face" data-face="experience" aria-hidden="true"></div>
+          <div class="face" data-face="contact" aria-hidden="true"></div>
+        </div>
+        <div class="cube-labels" aria-hidden="true">
+          <div class="face-label-group" data-face="home"><span class="face-label">Dean Edwards</span><span class="face-subtitle">Web Design &amp; Development</span></div>
+          <div class="face-label-group" data-face="work"><span class="face-label">Work</span></div>
+          <div class="face-label-group" data-face="about"><span class="face-label">About Me</span></div>
+          <div class="face-label-group" data-face="skills"><span class="face-label">Skills</span></div>
+          <div class="face-label-group" data-face="experience"><span class="face-label">Experience</span></div>
+          <div class="face-label-group" data-face="contact"><span class="face-label">Contact</span></div>
         </div>
       </div>
     </div>
 
     <div id="triangle-stage" aria-hidden="true">
       <div class="tri-wrap">
-        <div id="triangle-rotor" class="shape-rotor" role="button" tabindex="-1" aria-label="View this category">
-          <svg viewBox="0 0 200 174" aria-hidden="true">
-            <polygon points="100,4 196,170 4,170"></polygon>
-          </svg>
-        </div>
-        <div class="tri-labels">
-          <button class="tri-label active" data-index="0" data-category="web" type="button">Web</button>
-          <button class="tri-label" data-index="1" data-category="graphics" type="button">Graphics</button>
-          <button class="tri-label" data-index="2" data-category="games" type="button">Games</button>
+        <!-- The Three.js canvas is created and appended here at runtime by
+             buildPyramidMesh() (three-nav.js), and given id="pyramid" so the
+             existing click/rect wiring in initWorkMorph keeps working
+             unchanged. This overlay holds the real DOM text label for
+             whichever pyramid face is currently active. -->
+        <div class="pyramid-labels" aria-hidden="true">
+          <span class="pyramid-face-label" data-face="web">Web</span>
+          <span class="pyramid-face-label" data-face="graphics">Graphics</span>
+          <span class="pyramid-face-label" data-face="games">Games</span>
+          <span class="pyramid-face-label" data-face="back">&larr; Back</span>
         </div>
       </div>
     </div>
@@ -83,13 +101,11 @@
     </div>
 
     <div id="skills-stage" aria-hidden="true">
-      <div class="tri-wrap">
-        <div id="skills-rotor" class="shape-rotor" role="button" tabindex="-1" aria-label="Back to cube">
-          <svg viewBox="0 0 100 100" aria-hidden="true">
-            <polygon id="skills-polygon"></polygon>
-          </svg>
-        </div>
-      </div>
+      <!-- The Three.js canvas is created and appended here at runtime by
+           buildHexagonMesh() (three-nav.js), and given id="skills-rotor" so
+           the existing click wiring in initSkillsSection keeps working
+           unchanged. -->
+      <div class="tri-wrap"></div>
     </div>
 
     <button id="section-back" class="work-back" type="button" aria-label="Back">&larr; Back</button>
@@ -259,6 +275,9 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="script.js"></script>
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+</script>
+<script type="module" src="script.js"></script>
 </body>
 </html>

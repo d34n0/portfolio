@@ -1,3 +1,9 @@
+import * as THREE from 'three';
+import {
+  buildPyramidMesh, buildCubeMesh, buildHexagonMesh, createShapeNavigator,
+  projectToCanvasPx, isFrontFacing, raycastFaceIndex,
+} from './three-nav.js';
+
 // ---- Boot log content: this doubles as Dean's profile, rendered as system state ----
 const BOOT_LINES = [
   { text: 'BOOTING DE-OS v2.6 ...',                                     cls: 'dim2' },
@@ -168,7 +174,7 @@ function enterSite() {
     const triangleNav = initTriangleNav((key) => workGrid && workGrid.show(key));
     const skillsNav = initSkillsSection();
     initSceneInput(cubeNav, triangleNav, skillsNav);
-    initWorkMorph(workGrid);
+    initWorkMorph(workGrid, triangleNav);
     initStaticSection('about', 28, 0, 47, 'images/profile.jpg');
     initStaticSection('experience', 4, 45, 66);
     initStaticSection('contact', 28, 0);
@@ -423,13 +429,22 @@ function initFbmBackground() {
 
 // ---- Cube navigation: driven by wheel/touch/keyboard input routed in from
 // initSceneInput, not real page scroll — the page itself never scrolls, only
-// the cube (or, in triangle mode, the work-category selector) rotates. ----
+// the cube (or, in triangle mode, the work-category selector) rotates. Now a
+// real Three.js BoxGeometry (see buildCubeMesh, three-nav.js) instead of 6
+// separately-stroked CSS-3D divs — a welded mesh has no seam between faces.
+// The 6 original .face divs stay in the DOM as invisible placeholders purely
+// so initWorkMorph/initStaticSection/initSkillsSection's existing
+// getBoundingClientRect()/click() wiring keeps working completely
+// unchanged; this function dispatches a synthetic .click() to the right one
+// after resolving a raycast hit, rather than those modules raycasting
+// themselves. ----
 function initCubeNavigation() {
-  const cubeEl = document.getElementById('cube');
+  const container = document.querySelector('.scene');
   const stage = document.getElementById('cube-stage');
   const panels = document.querySelectorAll('.face-panel');
   const dots = document.querySelectorAll('.progress button');
-  if (!cubeEl || !stage) return null;
+  const labelWrap = document.querySelector('.cube-labels');
+  if (!container || !stage || !labelWrap) return null;
 
   const FACE_KEYS = ['home', 'work', 'about', 'skills', 'experience', 'contact'];
 
@@ -446,110 +461,88 @@ function initCubeNavigation() {
     return null;
   }
 
-  // Same "roll it like a die" approach as the reference cube: each segment only
-  // touches one axis relative to the last, so every in-between orientation is a
-  // real, undistorted cube pose — except home → work and skills → experience,
-  // which pitch and yaw at once for a diagonal roll instead of a flat
-  // single-axis turn. Work sits on the physical face right of home (not the
-  // front) specifically so that first roll is a clean single diagonal move,
-  // with no need to dip through an off-axis waypoint and back — see the
-  // matching data-face reassignment on the .face divs in index.html.
+  const deg = THREE.MathUtils.degToRad;
+  // Same "roll it like a die" states as before — home → work and skills →
+  // experience pitch and yaw at once for a diagonal roll instead of a flat
+  // single-axis turn. These numeric values are unchanged from the CSS
+  // version (just degrees→radians), so the roll feels identical.
   const states = [
-    { key: 'home',       rotateX: -90, rotateY: 0    }, // top
-    { key: 'work',       rotateX: 0,   rotateY: -90  }, // right (diagonal from home)
-    { key: 'about',      rotateX: 0,   rotateY: -180 }, // back
-    { key: 'skills',     rotateX: 0,   rotateY: -270 }, // left
-    { key: 'experience', rotateX: 90,  rotateY: -360 }, // bottom (diagonal from skills)
-    { key: 'contact',    rotateX: 0,   rotateY: -360 }, // front
+    { key: 'home',       rotation: { x: deg(-90), y: 0 } },
+    { key: 'work',       rotation: { x: 0, y: deg(-90) } },
+    { key: 'about',      rotation: { x: 0, y: deg(-180) } },
+    { key: 'skills',     rotation: { x: 0, y: deg(-270) } },
+    { key: 'experience', rotation: { x: deg(90), y: deg(-360) } },
+    { key: 'contact',    rotation: { x: 0, y: deg(-360) } },
   ];
 
-  gsap.set(cubeEl, { rotateX: states[0].rotateX, rotateY: states[0].rotateY });
+  // Which BoxGeometry material group (Three.js's fixed +x,-x,+y,-y,+z,-z
+  // order) each key lands on — derived by solving, for each state above,
+  // which local box direction ends up facing the camera once that exact
+  // rotation is applied (rather than guessed and then reverse-fitted), so
+  // the states array above can stay numerically identical to the old CSS
+  // version's tuned values.
+  const BOX_ORDER_KEYS = ['work', 'skills', 'experience', 'home', 'contact', 'about'];
 
-  // A paused timeline used purely as an interpolation reference — we scrub its
-  // progress manually instead of tying it to ScrollTrigger and real scroll.
-  const tl = gsap.timeline({ paused: true });
-  for (let i = 1; i < states.length; i++) {
-    tl.to(cubeEl, {
-      rotateX: states[i].rotateX,
-      rotateY: states[i].rotateY,
-      duration: 1,
-      ease: 'none',
-    });
-  }
+  const built = buildCubeMesh({ container, faceKeysByBoxOrder: BOX_ORDER_KEYS });
+  const canvas = built.canvas;
+  canvas.setAttribute('role', 'button');
+  canvas.setAttribute('tabindex', '0');
 
-  const segmentDurations = tl.getChildren().map((t) => t.duration());
-  const totalDuration = segmentDurations.reduce((a, b) => a + b, 0);
-  let cumulative = 0;
-  const visibleThresholds = [0];
-  segmentDurations.forEach((d) => { cumulative += d; visibleThresholds.push(cumulative); });
+  const labelEls = {};
+  labelWrap.querySelectorAll('.face-label-group').forEach((el) => { labelEls[el.dataset.face] = el; });
 
-  let activeIndex = 0;
+  let activeIndexRef = 0;
 
-  function showFace(index) {
-    const key = FACE_KEYS[index];
+  function showFace(index, key) {
+    activeIndexRef = index;
     currentFaceKey = key;
     panels.forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === key));
     dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
+    canvas.setAttribute('aria-label', key === 'home' ? 'Dean Edwards — Web Design & Development' : `${key} face`);
   }
+  showFace(0, FACE_KEYS[0]);
 
-  function applyProgress(p) {
-    tl.progress(p);
-    const t = p * totalDuration;
-    let active = 0;
-    visibleThresholds.forEach((threshold, i) => {
-      if (t >= threshold - 0.001) active = i;
+  // Multiple faces can be simultaneously (partially) front-facing during a
+  // roll — matches the old CSS backface-visibility:hidden behavior, which
+  // had no .active-style gate on .face-label, only a per-face facing check.
+  function updateLabels() {
+    Object.entries(built.facesByKey).forEach(([key, face]) => {
+      const el = labelEls[key];
+      if (!el) return;
+      const front = isFrontFacing(face.normal, built.spinGroup, built.camera);
+      el.style.opacity = front ? '1' : '0';
+      if (front) {
+        const px = projectToCanvasPx(face.center, built.spinGroup, built.camera, canvas);
+        if (px) { el.style.left = `${px.x}px`; el.style.top = `${px.y}px`; }
+      }
     });
-    if (active !== activeIndex) {
-      activeIndex = active;
-      showFace(active);
-    }
   }
 
-  // Continuous spring-lerp: wheel/touch/keys only ever move `targetP`, and a
-  // running rAF loop eases `currentP` toward it every frame. That's what makes
-  // the rotation feel smooth and inertial instead of jumping straight to each
-  // new value — input and motion are decoupled.
-  let currentP = 0;
-  let targetP = 0;
-  const LERP_FACTOR = prefersReducedMotion ? 1 : 0.14;
+  const nav = createShapeNavigator({
+    scene: built.scene,
+    camera: built.camera,
+    renderer: built.renderer,
+    spinGroup: built.spinGroup,
+    states,
+    lerpFactor: prefersReducedMotion ? 1 : 0.14,
+    onFaceChange: showFace,
+    onFrame: updateLabels,
+  });
+  updateLabels();
 
-  applyProgress(0);
-
-  function renderLoop() {
-    currentP += (targetP - currentP) * LERP_FACTOR;
-    if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
-    applyProgress(currentP);
-    requestAnimationFrame(renderLoop);
-  }
-  requestAnimationFrame(renderLoop);
-
-  function nearestThreshold(p) {
-    const t = p * totalDuration;
-    let nearest = visibleThresholds[0];
-    let minDist = Infinity;
-    visibleThresholds.forEach((threshold) => {
-      const d = Math.abs(t - threshold);
-      if (d < minDist) { minDist = d; nearest = threshold; }
-    });
-    return nearest;
-  }
-
-  let settleTimer;
-  function snapToNearest() {
-    targetP = nearestThreshold(targetP) / totalDuration;
-  }
-
-  function nudge(deltaProgress) {
-    targetP = Math.max(0, Math.min(1, targetP + deltaProgress));
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(snapToNearest, 140);
-  }
-
-  function goToIndex(index) {
-    const clamped = Math.max(0, Math.min(visibleThresholds.length - 1, index));
-    clearTimeout(settleTimer);
-    targetP = visibleThresholds[clamped] / totalDuration;
-  }
+  // A click anywhere on the cube canvas raycasts to find which physical
+  // face was actually hit (two faces can be simultaneously clickable
+  // during a roll), then dispatches a real .click() to the matching
+  // invisible placeholder div — every existing per-section click handler
+  // (initWorkMorph, initStaticSection, initSkillsSection) keeps listening
+  // on those exact elements, completely unchanged.
+  canvas.addEventListener('click', (e) => {
+    const idx = raycastFaceIndex(e, canvas, built.camera, built.mesh);
+    if (idx === null) return;
+    const key = BOX_ORDER_KEYS[idx];
+    const placeholder = document.querySelector(`#cube .face[data-face="${key}"]`);
+    if (placeholder) placeholder.click();
+  });
 
   // Tracks whether the visitor has driven the cube themselves yet — used to
   // cancel the one-time nudge demo below the moment real input arrives.
@@ -560,7 +553,7 @@ function initCubeNavigation() {
     dot.addEventListener('click', () => {
       interactionMode = 'cube';
       markInteracted();
-      goToIndex(i);
+      nav.goToIndex(i);
     });
   });
 
@@ -569,19 +562,19 @@ function initCubeNavigation() {
   if (!prefersReducedMotion) {
     setTimeout(() => {
       if (userInteracted || interactionMode !== 'cube') return;
-      const peek = (visibleThresholds[1] / totalDuration) * 0.4;
-      targetP = peek;
+      const peek = (1 / (states.length - 1)) * 0.4;
+      nav.setProgressRaw(peek);
       setTimeout(() => {
-        if (!userInteracted) targetP = 0;
+        if (!userInteracted) nav.setProgressRaw(0);
       }, 650);
     }, 1600);
   }
 
   return {
-    nudge,
-    goToIndex,
+    nudge: nav.nudge,
+    goToIndex: nav.goToIndex,
     markInteracted,
-    get activeIndex() { return activeIndex; },
+    get activeIndex() { return activeIndexRef; },
   };
 }
 
@@ -652,77 +645,105 @@ function initWorkGrid() {
   return { panelEl: panel, show };
 }
 
-// ---- Triangle navigation (the "Work" drill-down): a flat 2D selector that
-// rotates 120° per step between three categories. Reuses the same
-// target/current lerp pattern as the cube, but needs none of GSAP's timeline
-// scrubbing since it's a single CSS rotate() rather than a multi-axis roll. ----
+// ---- Triangle navigation (the "Work" drill-down): a real Three.js
+// tetrahedron (see buildPyramidMesh in three-nav.js) rolled through 4 states
+// — Web/Graphics/Games/Back — via the same lerp-driven scroll/touch pattern
+// as the cube, now scrubbing a mesh rotation directly instead of a paused
+// GSAP timeline. Each state's elevation cancels the side faces' own outward
+// tilt so they land flat on the camera; "Back" is the odd one out — the base
+// doesn't sit on that same yaw carousel, so reaching it needs its own X
+// tilt too. ----
 function initTriangleNav(onCategoryChange) {
-  const rotor = document.getElementById('triangle-rotor');
-  const labels = document.querySelectorAll('.tri-label');
-  if (!rotor || typeof gsap === 'undefined') return null;
+  const container = document.querySelector('#triangle-stage .tri-wrap');
+  const labelWrap = document.querySelector('.pyramid-labels');
+  if (!container || !labelWrap || typeof gsap === 'undefined') return null;
 
-  const CATEGORY_KEYS = ['web', 'graphics', 'games'];
-  const STEP_DEG = 120;
-  const totalDuration = CATEGORY_KEYS.length - 1;
+  const CATEGORY_KEYS = ['web', 'graphics', 'games', 'back'];
+  const labelEls = {};
+  labelWrap.querySelectorAll('.pyramid-face-label').forEach((el) => { labelEls[el.dataset.face] = el; });
 
-  let activeIndex = 0;
-  let currentP = 0;
-  let targetP = 0;
-  const LERP_FACTOR = prefersReducedMotion ? 1 : 0.16;
+  const deg = THREE.MathUtils.degToRad;
+  // A side face's local normal (post rotateY fix in buildPyramidMesh) is
+  // (0, sin(19.4712deg), cos(19.4712deg)) — tilted up by that amount from
+  // dead-on. Rx(theta) couples y/z rather than simply cancelling the y
+  // component, so the angle that actually zeroes it out is theta itself
+  // (POSITIVE, not the negated angle it looks like you'd want): solving
+  // y*cos(theta) - z*sin(theta) = 0 for this normal gives theta = +19.4712deg.
+  // Verified numerically (not hand-derived) via a discoverFaces + matrixWorld
+  // dot-product check: at this angle the front face reaches dot=1.0 exactly
+  // against the camera, and all 3 other faces land at dot=-1/3, the true
+  // regular-tetrahedron dihedral value — confirming a clean single-face-on
+  // view with no other geometry peeking into the silhouette.
+  const ELEVATION = deg(19.4712);
+  // "Back" (the base cap) needs the base's local normal (0,-1,0) rotated to
+  // (0,0,1). Solving the same Rx equations for that normal gives exactly
+  // -90deg, independent of ELEVATION — confirmed numerically the same way:
+  // dot=1.0 for the base, dot=-1/3 for all 3 side faces.
+  const BACK_TILT = deg(-90);
+  // The base cap has no single "apex" vertex the way a side face does (it's
+  // just the 3 rim corners, symmetric under 120deg yaw) — so which of its 3
+  // corners ends up pointing "up" on screen is a free choice, set entirely by
+  // the yaw used before applying BACK_TILT. yaw=-360 (matching 'web') put a
+  // rim EDGE on top and a corner pointing down — upside-down relative to the
+  // other 3 faces' apex-up look. Verified numerically by projecting the base
+  // cap's 3 corners to NDC across a yaw sweep: -300deg is the one value in
+  // that sweep whose vertex pattern exactly matches 'web' face's own
+  // (single vertex at NDC (0,+0.777), the other two at (+-0.673,-0.389)).
+  const states = [
+    { key: 'web',      rotation: { x: ELEVATION, y: 0 } },
+    { key: 'graphics', rotation: { x: ELEVATION, y: deg(-120) } },
+    { key: 'games',    rotation: { x: ELEVATION, y: deg(-240) } },
+    { key: 'back',     rotation: { x: BACK_TILT,  y: deg(-300) } },
+  ];
 
-  function showCategory(index) {
-    if (index === activeIndex) return;
-    activeIndex = index;
-    labels.forEach((label) => label.classList.toggle('active', Number(label.dataset.index) === index));
-    if (onCategoryChange) onCategoryChange(CATEGORY_KEYS[index]);
+  // states must exist before this call — buildPyramidMesh resolves each
+  // state's actual front-facing mesh face by applying its rotation and
+  // checking real dot products, not by a static ahead-of-time sort.
+  const built = buildPyramidMesh({ container, states });
+  const pyramid = built.canvas;
+  pyramid.id = 'pyramid';
+  pyramid.setAttribute('role', 'button');
+  pyramid.setAttribute('tabindex', '-1');
+  pyramid.setAttribute('aria-label', 'Web');
+
+  function showCategory(index, key) {
+    Object.entries(labelEls).forEach(([faceKey, el]) => el.classList.toggle('active', faceKey === key));
+    pyramid.setAttribute('aria-label', key === 'back' ? 'Back to cube' : `View ${key} category`);
+    if (key !== 'back' && onCategoryChange) onCategoryChange(key);
+  }
+  labelEls[CATEGORY_KEYS[0]].classList.add('active');
+
+  function updateLabels() {
+    const key = CATEGORY_KEYS[nav.activeIndex];
+    const face = built.facesByKey[key];
+    const el = labelEls[key];
+    if (!face || !el) return;
+    const px = projectToCanvasPx(face.centroid, built.spinGroup, built.camera, pyramid);
+    if (px) { el.style.left = `${px.x}px`; el.style.top = `${px.y}px`; }
   }
 
-  function applyProgress(p) {
-    const t = p * totalDuration;
-    rotor.style.transform = `rotate(${t * STEP_DEG}deg)`;
-    showCategory(Math.round(t));
-  }
-
-  function renderLoop() {
-    currentP += (targetP - currentP) * LERP_FACTOR;
-    if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
-    applyProgress(currentP);
-    requestAnimationFrame(renderLoop);
-  }
-  applyProgress(0);
-  requestAnimationFrame(renderLoop);
-
-  let settleTimer;
-  function snapToNearest() {
-    targetP = Math.round(targetP * totalDuration) / totalDuration;
-  }
-
-  // The triangle only has 2 gaps between its 3 states (vs. the cube's 5
-  // between 6 faces), so the same wheel delta covers proportionally less
-  // ground — boost it so a category change takes noticeably less scrolling.
-  const SENSITIVITY_BOOST = 3;
-
-  function nudge(deltaProgress) {
-    targetP = Math.max(0, Math.min(1, targetP + deltaProgress * SENSITIVITY_BOOST));
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(snapToNearest, 140);
-  }
-
-  function goToIndex(index) {
-    const clamped = Math.max(0, Math.min(CATEGORY_KEYS.length - 1, index));
-    clearTimeout(settleTimer);
-    targetP = clamped / totalDuration;
-  }
-
-  labels.forEach((label) => {
-    label.addEventListener('click', () => goToIndex(Number(label.dataset.index)));
+  const nav = createShapeNavigator({
+    scene: built.scene,
+    camera: built.camera,
+    renderer: built.renderer,
+    spinGroup: built.spinGroup,
+    states,
+    lerpFactor: prefersReducedMotion ? 1 : 0.16,
+    // 3 gaps between the pyramid's 4 states (vs. the cube's 5 between 6
+    // faces), so the same wheel delta covers proportionally less ground —
+    // boost it so a category change takes noticeably less scrolling.
+    sensitivityBoost: 2,
+    onFaceChange: showCategory,
+    onFrame: updateLabels,
   });
+  updateLabels();
 
   return {
-    nudge,
-    goToIndex,
+    nudge: nav.nudge,
+    goToIndex: nav.goToIndex,
     markInteracted() {},
-    get activeIndex() { return activeIndex; },
+    get activeIndex() { return nav.activeIndex; },
+    get activeKey() { return nav.activeKey; },
   };
 }
 
@@ -790,20 +811,21 @@ function initSceneInput(cubeNav, triangleNav, skillsNav) {
 }
 
 // ---- Work-face morph: clicking the cube's front-facing "Work" face slides
-// it left, shrinks it away, and cross-fades in the flat triangle category
+// it left, shrinks it away, and cross-fades in the 3D pyramid category
 // selector plus its docked preview grid. From there, clicking the grid's
 // header expands that category to fill the screen. Three states deep
-// (cube -> triangle -> grid), stepped back one at a time via #section-back,
-// Escape, or clicking the triangle. ----
-function initWorkMorph(workGrid) {
+// (cube -> pyramid -> grid), stepped back one at a time via #section-back,
+// Escape, or clicking the pyramid — except landing on its "Back" face, which
+// clicks straight through to the cube, no separate button needed. ----
+function initWorkMorph(workGrid, triangleNav) {
   const workFace = document.querySelector('.face[data-face="work"]');
   const cubeScene = document.querySelector('.cube-slot');
   const triangleStage = document.getElementById('triangle-stage');
-  const rotor = document.getElementById('triangle-rotor');
+  const pyramid = document.getElementById('pyramid');
   const dotsWrap = document.querySelector('.progress');
   const gridHeader = document.getElementById('work-grid-header');
   const gridPanel = workGrid ? workGrid.panelEl : null;
-  if (!workFace || !cubeScene || !triangleStage || !rotor || typeof gsap === 'undefined') return;
+  if (!workFace || !cubeScene || !triangleStage || !pyramid || typeof gsap === 'undefined') return;
 
   gsap.set(triangleStage, { opacity: 0, scale: 1, x: 0, y: 0 });
 
@@ -901,7 +923,10 @@ function initWorkMorph(workGrid) {
     if (interactionMode !== 'cube') return;
     interactionMode = 'work-triangle';
     activeSection = 'work';
-    setSectionBackVisible(true);
+    // No visible back button while just browsing the pyramid — landing on
+    // its "Back" face and clicking does the same job. It reappears once a
+    // category is selected (see selectCategory()), since the pyramid's own
+    // rotation no longer doubles as an exit from that point.
     runFoldMorph();
     gsap.timeline()
       .set(triangleStage, { scale: 1 }, 0)
@@ -913,7 +938,6 @@ function initWorkMorph(workGrid) {
         { opacity: 0 },
         { opacity: 1, duration: 0.35, ease: 'power1.out' },
         0.72);
-    if (rotor) rotor.setAttribute('aria-label', 'View this category');
   }
 
   // ---- Selecting a category: the triangle alone owns scroll/touch while
@@ -925,18 +949,18 @@ function initWorkMorph(workGrid) {
   function selectCategory() {
     if (interactionMode !== 'work-triangle' || !gridPanel) return;
     interactionMode = 'work-selected';
+    setSectionBackVisible(true);
     const shift = sectionShiftVector();
     gsap.to(triangleStage, { x: shift.x, y: shift.y, duration: 0.6, ease: 'power2.inOut' });
     gridPanel.classList.add('visible');
-    if (rotor) rotor.setAttribute('aria-label', 'Back to categories');
   }
 
   function deselectCategory() {
     if (interactionMode !== 'work-selected' || !gridPanel) return;
     interactionMode = 'work-triangle';
+    setSectionBackVisible(false);
     gsap.to(triangleStage, { x: 0, y: 0, duration: 0.6, ease: 'power2.inOut' });
     gridPanel.classList.remove('visible');
-    if (rotor) rotor.setAttribute('aria-label', 'View this category');
   }
 
   function morphToCube() {
@@ -992,9 +1016,13 @@ function initWorkMorph(workGrid) {
     if (currentFaceKey === 'work' && interactionMode === 'cube') morphToTriangle();
   });
 
-  rotor.addEventListener('click', () => {
-    if (interactionMode === 'work-triangle') selectCategory();
-    else if (interactionMode === 'work-selected') deselectCategory();
+  pyramid.addEventListener('click', () => {
+    if (interactionMode === 'work-triangle') {
+      if (triangleNav && triangleNav.activeKey === 'back') morphToCube();
+      else selectCategory();
+    } else if (interactionMode === 'work-selected') {
+      deselectCategory();
+    }
   });
   if (gridHeader) gridHeader.addEventListener('click', enterGrid);
 
@@ -1240,20 +1268,25 @@ function initSkillsSection() {
   const cubeScene = document.querySelector('.cube-slot');
   const dotsWrap = document.querySelector('.progress');
   const stage = document.getElementById('skills-stage');
-  const rotor = document.getElementById('skills-rotor');
-  const polygon = document.getElementById('skills-polygon');
+  const container = document.querySelector('#skills-stage .tri-wrap');
   const panel = document.getElementById('skills-panel');
   const panelTitle = document.getElementById('skills-panel-title');
   const panelList = document.getElementById('skills-panel-list');
   const panelDots = document.getElementById('skills-panel-dots');
-  if (!face || !cubeScene || !stage || !rotor || !polygon || !panel || typeof gsap === 'undefined') return null;
+  if (!face || !cubeScene || !stage || !container || !panel || typeof gsap === 'undefined') return null;
 
   const SIDES = 6;
-  const STEP_DEG = 360 / SIDES;
-  const totalDuration = SKILLS_PAGES.length - 1;
+  // Still used by the fold/unfold proxy morph below (createSectionProxy) as
+  // its target/source shape — unrelated to the 3D rotor itself now.
   const restPoints = regularPolygonPoints(SIDES, 47, -90);
-  polygon.setAttribute('points', restPoints.map((p) => p.join(',')).join(' '));
   gsap.set(stage, { opacity: 0, x: sectionShiftX(), pointerEvents: 'none' });
+
+  const built = buildHexagonMesh({ container });
+  const rotor = built.canvas;
+  rotor.id = 'skills-rotor';
+  rotor.setAttribute('role', 'button');
+  rotor.setAttribute('tabindex', '-1');
+  rotor.setAttribute('aria-label', 'Back to cube');
 
   if (panelDots) {
     SKILLS_PAGES.forEach(() => {
@@ -1282,46 +1315,25 @@ function initSkillsSection() {
   }
   showPage(0);
 
-  let activeIndex = 0;
-  let currentP = 0;
-  let targetP = 0;
-  const LERP_FACTOR = prefersReducedMotion ? 1 : 0.16;
+  // Same STEP_DEG (360/6=60) per page-gap as the old CSS rotate() version,
+  // now driving the mesh's own Z rotation through the shared factory instead
+  // of a bespoke direct-transform rAF loop — folds skills onto the same
+  // pattern the cube/pyramid already use.
+  const deg = THREE.MathUtils.degToRad;
+  const states = SKILLS_PAGES.map((_, i) => ({ key: i, rotation: { z: deg(i * 60) } }));
 
-  function applyProgress(p) {
-    const t = p * totalDuration;
-    rotor.style.transform = `rotate(${t * STEP_DEG}deg)`;
-    const idx = Math.round(t);
-    if (idx !== activeIndex) {
-      activeIndex = idx;
-      showPage(idx);
-    }
-  }
-
-  function renderLoop() {
-    currentP += (targetP - currentP) * LERP_FACTOR;
-    if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
-    applyProgress(currentP);
-    requestAnimationFrame(renderLoop);
-  }
-  applyProgress(0);
-  requestAnimationFrame(renderLoop);
-
-  let settleTimer;
-  function snapToNearest() {
-    targetP = Math.round(targetP * totalDuration) / totalDuration;
-  }
-  function nudge(deltaProgress) {
+  const nav = createShapeNavigator({
+    scene: built.scene,
+    camera: built.camera,
+    renderer: built.renderer,
+    spinGroup: built.spinGroup,
+    states,
+    lerpFactor: prefersReducedMotion ? 1 : 0.16,
     // Same sensitivity boost as the triangle — fewer sides in the rotation
     // range (2 gaps across 3 pages) means the same wheel delta needs a lift.
-    targetP = Math.max(0, Math.min(1, targetP + deltaProgress * 3));
-    clearTimeout(settleTimer);
-    settleTimer = setTimeout(snapToNearest, 140);
-  }
-  function goToIndex(index) {
-    const clamped = Math.max(0, Math.min(SKILLS_PAGES.length - 1, index));
-    clearTimeout(settleTimer);
-    targetP = clamped / totalDuration;
-  }
+    sensitivityBoost: 3,
+    onFaceChange(index) { showPage(index); },
+  });
 
   const proxy = createSectionProxy();
   const rectPoints = rectPerimeterPoints(SIDES);
@@ -1346,7 +1358,7 @@ function initSkillsSection() {
       .fromTo(stage, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.68);
 
     panel.classList.add('visible');
-    showPage(activeIndex, { delay: 0.35 });
+    showPage(nav.activeIndex, { delay: 0.35 });
   }
 
   function morphOut() {
@@ -1377,10 +1389,10 @@ function initSkillsSection() {
   sectionGoBack.skills = morphOut;
 
   return {
-    nudge,
-    goToIndex,
+    nudge: nav.nudge,
+    goToIndex: nav.goToIndex,
     markInteracted() {},
-    get activeIndex() { return activeIndex; },
+    get activeIndex() { return nav.activeIndex; },
   };
 }
 
