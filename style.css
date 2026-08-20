@@ -532,9 +532,6 @@ html {
   opacity: 0;
   white-space: nowrap;
 }
-.pyramid-face-label.active {
-  opacity: 1;
-}
 
 /* Skills' hexagon is now rendered as a real Three.js CylinderGeometry (see
    buildHexagonMesh, three-nav.js) instead of a flat spun SVG polygon — the

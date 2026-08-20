@@ -118,7 +118,14 @@ export function createShapeNavigator({
     if (Math.abs(targetP - currentP) < 0.0004) currentP = targetP;
     applyProgress(currentP);
     renderer.render(scene, camera);
-    if (onFrame) onFrame(currentP, activeIndex);
+    // "settled" (for e.g. gating a label reveal) uses a much looser threshold
+    // than the 0.0004 snap epsilon above: that epsilon exists to kill visible
+    // jitter in the rotation itself, so it stays tight, but waiting for it
+    // made a face-settle signal lag ~1.5s behind the roll visually stopping
+    // (exponential lerp tails off asymptotically) — a full second of dead air
+    // before a label would decode in. 0.01 is close enough to be visually
+    // indistinguishable from fully settled, and fires in a few hundred ms.
+    if (onFrame) onFrame(currentP, activeIndex, Math.abs(targetP - currentP) < 0.01);
     requestAnimationFrame(renderLoop);
   }
   applyProgress(0);

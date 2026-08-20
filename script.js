@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   buildPyramidMesh, buildCubeMesh, buildHexagonMesh, createShapeNavigator,
-  projectToCanvasPx, isFrontFacing, raycastFaceIndex,
+  projectToCanvasPx, raycastFaceIndex,
 } from './three-nav.js';
 
 // ---- Boot log content: this doubles as Dean's profile, rendered as system state ----
@@ -502,20 +502,40 @@ function initCubeNavigation() {
   }
   showFace(0, FACE_KEYS[0]);
 
-  // Multiple faces can be simultaneously (partially) front-facing during a
-  // roll — matches the old CSS backface-visibility:hidden behavior, which
-  // had no .active-style gate on .face-label, only a per-face facing check.
-  function updateLabels() {
-    Object.entries(built.facesByKey).forEach(([key, face]) => {
-      const el = labelEls[key];
-      if (!el) return;
-      const front = isFrontFacing(face.normal, built.spinGroup, built.camera);
-      el.style.opacity = front ? '1' : '0';
-      if (front) {
-        const px = projectToCanvasPx(face.center, built.spinGroup, built.camera, canvas);
-        if (px) { el.style.left = `${px.x}px`; el.style.top = `${px.y}px`; }
+  // Flat 2D text can't foreshorten the way the rotating 3D face under it
+  // does, so continuously re-projecting a label mid-roll made it visibly
+  // detach from the face's shrinking/skewing silhouette. Instead: hide every
+  // label during transit, and once the roll settles on a face, decode its
+  // text into place (same terminal-decrypt effect as the About Me panel —
+  // see decodeReveal/prepareDecodeTargets/playDecode) rather than just
+  // snapping opacity to 1.
+  let shownKey = null;
+  function playFaceDecode(key) {
+    const el = labelEls[key];
+    if (!el) return;
+    playDecode(prepareDecodeTargets(el, '.face-label, .face-subtitle'), { stagger: 0.04 });
+  }
+
+  function updateLabels(_currentP, activeIndex, settled) {
+    if (!settled) {
+      if (shownKey !== null) {
+        Object.values(labelEls).forEach((el) => { el.style.opacity = '0'; });
+        shownKey = null;
       }
-    });
+      return;
+    }
+    const activeKey = states[activeIndex].key;
+    const face = built.facesByKey[activeKey];
+    const el = labelEls[activeKey];
+    if (!face || !el) return;
+    const px = projectToCanvasPx(face.center, built.spinGroup, built.camera, canvas);
+    if (px) { el.style.left = `${px.x}px`; el.style.top = `${px.y}px`; }
+    if (shownKey !== activeKey) {
+      Object.values(labelEls).forEach((other) => { if (other !== el) other.style.opacity = '0'; });
+      el.style.opacity = '1';
+      playFaceDecode(activeKey);
+      shownKey = activeKey;
+    }
   }
 
   const nav = createShapeNavigator({
@@ -528,7 +548,7 @@ function initCubeNavigation() {
     onFaceChange: showFace,
     onFrame: updateLabels,
   });
-  updateLabels();
+  updateLabels(0, 0, true);
 
   // A click anywhere on the cube canvas raycasts to find which physical
   // face was actually hit (two faces can be simultaneously clickable
@@ -707,19 +727,44 @@ function initTriangleNav(onCategoryChange) {
   pyramid.setAttribute('aria-label', 'Web');
 
   function showCategory(index, key) {
-    Object.entries(labelEls).forEach(([faceKey, el]) => el.classList.toggle('active', faceKey === key));
     pyramid.setAttribute('aria-label', key === 'back' ? 'Back to cube' : `View ${key} category`);
     if (key !== 'back' && onCategoryChange) onCategoryChange(key);
   }
-  labelEls[CATEGORY_KEYS[0]].classList.add('active');
 
-  function updateLabels() {
-    const key = CATEGORY_KEYS[nav.activeIndex];
+  // Same reasoning as the cube's labels: flat 2D text can't foreshorten with
+  // the rotating 3D face under it, so keep it hidden during transit and
+  // decode it into place (see decodeReveal/prepareDecodeTargets/playDecode,
+  // same effect as the About Me panel) once a face settles as active.
+  let shownKey = null;
+  function playFaceDecode(key) {
+    const el = labelEls[key];
+    if (!el) return;
+    // Unlike the cube's .face-label-group wrapper (which holds separate
+    // .face-label/.face-subtitle children), each pyramid label is a single
+    // leaf span — decode it directly rather than hunting for children.
+    decodeReveal(el, el.textContent);
+  }
+
+  function updateLabels(_currentP, activeIndex, settled) {
+    if (!settled) {
+      if (shownKey !== null) {
+        Object.values(labelEls).forEach((el) => { el.style.opacity = '0'; });
+        shownKey = null;
+      }
+      return;
+    }
+    const key = CATEGORY_KEYS[activeIndex];
     const face = built.facesByKey[key];
     const el = labelEls[key];
     if (!face || !el) return;
     const px = projectToCanvasPx(face.centroid, built.spinGroup, built.camera, pyramid);
     if (px) { el.style.left = `${px.x}px`; el.style.top = `${px.y}px`; }
+    if (shownKey !== key) {
+      Object.values(labelEls).forEach((other) => { if (other !== el) other.style.opacity = '0'; });
+      el.style.opacity = '1';
+      playFaceDecode(key);
+      shownKey = key;
+    }
   }
 
   const nav = createShapeNavigator({
@@ -736,7 +781,7 @@ function initTriangleNav(onCategoryChange) {
     onFaceChange: showCategory,
     onFrame: updateLabels,
   });
-  updateLabels();
+  updateLabels(0, 0, true);
 
   return {
     nudge: nav.nudge,
@@ -923,6 +968,9 @@ function initWorkMorph(workGrid, triangleNav) {
     if (interactionMode !== 'cube') return;
     interactionMode = 'work-triangle';
     activeSection = 'work';
+    // Always re-enter on "Web", not wherever a previous visit left it
+    // rotated to.
+    if (triangleNav) triangleNav.goToIndex(0);
     // No visible back button while just browsing the pyramid — landing on
     // its "Back" face and clicking does the same job. It reappears once a
     // category is selected (see selectCategory()), since the pyramid's own
