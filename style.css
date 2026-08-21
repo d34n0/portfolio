@@ -10,10 +10,6 @@
   /* ---- Color: reusable surfaces (the same translucent panel fill kept
      turning up hand-typed in a dozen places) ---- */
   --panel-bg: rgba(4, 10, 7, 0.85);
-  /* Same color, no alpha — for the rotating nav shapes and their morph
-     proxies, which are meant to read as solid/opaque, unlike the translucent
-     glass panels --panel-bg is normally used for. */
-  --panel-bg-solid: rgb(4, 10, 7);
   --panel-bg-soft: rgba(57, 255, 136, 0.03);
   --scrim: rgba(2, 4, 3, 0.92);
 
@@ -456,39 +452,12 @@ html {
   white-space: nowrap;
 }
 
-/* Fold proxy: a standalone SVG that stands in for the "Work" face while it
-   morphs from a square into the triangle selector — see runFoldMorph() in
-   script.js. Sits above everything else in the stage for the transition's
-   duration, then hands off to #triangle-stage with a crossfade. */
-.work-morph-proxy {
-  position: fixed;
-  z-index: 5;
-  pointer-events: none;
-  opacity: 0;
-  filter: var(--shape-glow);
-}
-.work-morph-proxy svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: visible;
-}
-.work-morph-proxy polygon {
-  /* Not var(--panel-bg) directly: its 0.85 alpha made the proxy translucent,
-     letting the cube (and its still-visible face label) show through from
-     underneath while both were mid-fade during the morph — looked like the
-     shape had grown bigger than the cube, since you were seeing both
-     overlapping at once instead of a clean handoff. */
-  fill: var(--panel-bg-solid);
-  stroke: var(--phosphor);
-  stroke-width: 3;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
 /* ---------- WORK DRILL-DOWN: TRIANGLE CATEGORY SELECTOR ---------- */
 
-#triangle-stage {
+/* About/Experience/Contact reuse this same centered-overlay pattern for
+   their own real WebGL shape (see buildFlatPolygonMesh, three-nav.js) —
+   previously each was a permanently-resting flat 2D SVG polygon instead. */
+#triangle-stage, #about-stage, #experience-stage, #contact-stage {
   position: absolute;
   inset: 0;
   display: flex;
@@ -502,9 +471,10 @@ html {
   position: relative;
   width: min(46vmin, 300px);
   height: min(46vmin, 300px);
-  /* Establishes the 3D viewing context for the Work pyramid's rotateX/
-     rotateY (see .pyramid-face below); harmless for Skills' flat hexagon,
-     which shares this class but only ever does a 2D rotate(). */
+  /* Shared sizing/3D-viewing-context box for every stage's Three.js canvas
+     (pyramid, and About/Experience/Contact's flat shape — see
+     buildFlatPolygonMesh in three-nav.js). Skills has no .tri-wrap of its
+     own; it tilts the persistent cube in place instead (initSkillsSection). */
   perspective: 900px;
   /* The pyramid's edge length. Every face's size, and the exact pixel
      translate that seats the "Back" base face (see .pyramid-face-back),

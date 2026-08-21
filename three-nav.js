@@ -51,6 +51,14 @@ export function createSceneRig(container, { fov = 28, cameraDistance = 4.2 } = {
   camera.position.set(0, 0, cameraDistance);
   camera.lookAt(0, 0, 0);
 
+  // Shapes driven by a createShapeNavigator (cube/pyramid/hexagon) get
+  // painted "for free" every frame by that navigator's own render loop. A
+  // static shape built directly through this rig (buildFlatPolygonMesh) has
+  // no such loop, so resize() renders a fresh frame itself whenever the
+  // canvas actually changes size — otherwise the scene is built but never
+  // actually drawn, leaving a blank canvas forever.
+  function render() { renderer.render(scene, camera); }
+
   function resize() {
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -58,6 +66,7 @@ export function createSceneRig(container, { fov = 28, cameraDistance = 4.2 } = {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    render();
   }
   resize();
   const ro = new ResizeObserver(resize);
@@ -69,6 +78,7 @@ export function createSceneRig(container, { fov = 28, cameraDistance = 4.2 } = {
     scene,
     camera,
     resize,
+    render,
     dispose() { ro.disconnect(); renderer.dispose(); },
   };
 }
@@ -380,6 +390,56 @@ export function buildCubeMesh({ container, faceKeysByBoxOrder }) {
   faceKeysByBoxOrder.forEach((key, i) => { facesByKey[key] = boxFaces[i]; });
 
   return { ...rig, spinGroup, mesh, outline, hexOutline, facesByKey, materials };
+}
+
+// ---- Flat regular-polygon mesh: a real WebGL disc/square for the
+// non-rotating resting shapes (About's photo frame, Experience's and
+// Contact's panels). Previously these were a flat 2D SVG polygon that just
+// sat there permanently — dimensionally inert next to the cube/pyramid/
+// hexagon's real geometry, and colored via a separately-maintained CSS var
+// that could drift from the meshes' own fill. Routing it through the same
+// parseCssColor/readCssColor path as buildCubeMesh guarantees exact color
+// parity by construction rather than by two values happening to match.
+// ShapeGeometry's triangulation diagonals are always coplanar with each
+// other (a flat polygon has one normal everywhere), so EdgesGeometry's
+// angle-threshold test excludes them automatically and keeps only the true
+// perimeter — no need to hand-list an outline loop the way the cube's
+// hexagon silhouette did. ----
+export function buildFlatPolygonMesh({ container, sides, rotationDeg = 0, radius = 1 }) {
+  // A 4-sided polygon's flat edges sit closer to center than its corners
+  // (at radius*cos(45°)), so a square built at the same nominal radius as a
+  // many-sided "circle" reads visibly smaller — radius lets each caller
+  // compensate (see initStaticSection, which derives it from the same ratio
+  // the old 0-100 SVG viewBox version already used). Camera distance scales
+  // with it too, so a bigger radius (a square's corners reaching further
+  // out) doesn't get clipped by the fixed fov — headroom stays proportional.
+  const rig = createSceneRig(container, { fov: 30, cameraDistance: 4 * radius });
+  const shape = new THREE.Shape();
+  for (let i = 0; i <= sides; i++) {
+    const angle = THREE.MathUtils.degToRad(rotationDeg) + (i / sides) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  const geometry = new THREE.ShapeGeometry(shape);
+
+  const { color: fillColor } = parseCssColor(readCssColor('--panel-bg', 'rgba(4,10,7,0.85)'));
+  const phosphor = readCssColor('--phosphor', '#39ff88');
+
+  const material = new THREE.MeshBasicMaterial({ color: fillColor, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geometry, material);
+  const outline = makeOutline(geometry, phosphor);
+
+  const spinGroup = new THREE.Group();
+  spinGroup.add(mesh);
+  spinGroup.add(outline);
+  rig.scene.add(spinGroup);
+  // rig's own initial resize() already ran (inside createSceneRig, before
+  // this mesh existed) — render once more now that there's actually
+  // something in the scene to draw.
+  rig.render();
+
+  return { ...rig, spinGroup, mesh, outline };
 }
 
 // ---- The cube's "hexagon" outline: when the cube is tilted to look straight

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  buildPyramidMesh, buildCubeMesh, createShapeNavigator,
+  buildPyramidMesh, buildCubeMesh, buildFlatPolygonMesh, createShapeNavigator,
   projectToCanvasPx, raycastFaceIndex,
 } from './three-nav.js';
 
@@ -197,36 +197,9 @@ function isMobileLayout() { return window.innerWidth <= MOBILE_LAYOUT_BREAKPOINT
 // on mobile the panel docks below instead, so nothing needs to shift sideways.
 function sectionShiftX() { return isMobileLayout() ? 0 : '-27vw'; }
 
-// Where a section's resting shape (circle/hexagon/triangle/square) settles:
-// beside the docked panel on desktop, or up near the top of the stacked
-// panel on mobile.
-function computeSectionRect() {
-  if (isMobileLayout()) {
-    const size = Math.min(0.5 * window.innerWidth, 220);
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight * 0.3;
-    return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
-  }
-  const size = Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
-  const centerX = window.innerWidth / 2 - 0.27 * window.innerWidth;
-  const centerY = window.innerHeight / 2;
-  return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
-}
-
-// Dead center of the screen — where Work's triangle rests while just
-// browsing categories, before anything else is competing for the space.
-function computeCenteredRect() {
-  const size = isMobileLayout()
-    ? Math.min(0.5 * window.innerWidth, 220)
-    : Math.min(0.46 * Math.min(window.innerWidth, window.innerHeight), 300);
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  return { left: centerX - size / 2, top: centerY - size / 2, width: size, height: size };
-}
-
-// How far the triangle moves once a category is selected and the docked
-// grid needs room beside (desktop) or below (mobile) it — matches the
-// offset baked into computeSectionRect()'s two branches.
+// How far a section's shape moves to dock beside (desktop) or above
+// (mobile) its content panel — used both by Work's docked-grid shift and by
+// About/Experience/Contact's entry/exit shape animation.
 function sectionShiftVector() {
   return isMobileLayout() ? { x: 0, y: '-20vh' } : { x: '-27vw', y: 0 };
 }
@@ -911,97 +884,16 @@ function initWorkMorph(workGrid, triangleNav) {
   const gridPanel = workGrid ? workGrid.panelEl : null;
   if (!workFace || !cubeScene || !triangleStage || !pyramid || typeof gsap === 'undefined') return;
 
-  gsap.set(triangleStage, { opacity: 0, scale: 1, x: 0, y: 0 });
-
-  // ---- Fold proxy: a standalone SVG that stands in for the "Work" face
-  // during the morph. It starts exactly over the real face, folds its square
-  // silhouette in half into a right triangle (points collapse onto the
-  // diagonal), then reshapes that into the equilateral triangle's
-  // proportions while its container slides/shrinks to dead center — where
-  // the triangle rests while just browsing categories — before crossfading
-  // into the real, interactive triangle. It only moves aside once a
-  // category is selected (see selectCategory() below). ----
-  const proxy = document.createElement('div');
-  proxy.className = 'work-morph-proxy';
-  proxy.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><polygon></polygon></svg>';
-  document.body.appendChild(proxy);
-  const proxyPolygon = proxy.querySelector('polygon');
-
-  const POINTS_RECT   = [[0, 0], [100, 0], [100, 100], [0, 100]];
-  const POINTS_FOLDED = [[0, 0], [100, 100], [100, 100], [0, 100]];
-  const POINTS_TRI    = [[50, 2], [98, 98], [98, 98], [2, 98]];
-
-  function setPolygonPoints(points) {
-    proxyPolygon.setAttribute('points', points.map((p) => p.join(',')).join(' '));
-  }
-
-  function lerpPoints(a, b, t) {
-    return a.map((p, i) => [p[0] + (b[i][0] - p[0]) * t, p[1] + (b[i][1] - p[1]) * t]);
-  }
-
-  // Cached so the reverse (unfold) morph knows where the face rests at full
-  // cube size — by the time you click back, the cube is shrunk/hidden, so
-  // workFace.getBoundingClientRect() would return the wrong (tiny) rect.
-  let cachedFaceRect = null;
-
-  function runFoldMorph() {
-    const from = workFace.getBoundingClientRect();
-    cachedFaceRect = from;
-    const to = computeCenteredRect();
-
-    gsap.set(proxy, {
-      position: 'fixed', left: from.left, top: from.top, width: from.width, height: from.height,
-      opacity: 1,
-    });
-    setPolygonPoints(POINTS_RECT);
-
-    const fold = { t: 0 };
-    const reshape = { t: 0 };
-
-    gsap.timeline()
-      .to(proxy, {
-        left: to.left, top: to.top, width: to.width, height: to.height,
-        duration: 0.8, ease: 'power2.inOut',
-      }, 0)
-      .to(fold, {
-        t: 1, duration: 0.4, ease: 'power1.inOut',
-        onUpdate: () => setPolygonPoints(lerpPoints(POINTS_RECT, POINTS_FOLDED, fold.t)),
-      }, 0)
-      .to(reshape, {
-        t: 1, duration: 0.4, ease: 'power2.out',
-        onUpdate: () => setPolygonPoints(lerpPoints(POINTS_FOLDED, POINTS_TRI, reshape.t)),
-      }, 0.4)
-      .to(proxy, { opacity: 0, duration: 0.15, ease: 'power1.out' }, 0.75);
-  }
-
-  function runUnfoldMorph() {
-    const from = computeCenteredRect();
-    const to = cachedFaceRect || workFace.getBoundingClientRect();
-
-    gsap.set(proxy, {
-      position: 'fixed', left: from.left, top: from.top, width: from.width, height: from.height,
-      opacity: 1,
-    });
-    setPolygonPoints(POINTS_TRI);
-
-    const reshape = { t: 0 };
-    const unfold = { t: 0 };
-
-    gsap.timeline()
-      .to(proxy, {
-        left: to.left, top: to.top, width: to.width, height: to.height,
-        duration: 0.8, ease: 'power2.inOut',
-      }, 0)
-      .to(reshape, {
-        t: 1, duration: 0.4, ease: 'power1.inOut',
-        onUpdate: () => setPolygonPoints(lerpPoints(POINTS_TRI, POINTS_FOLDED, reshape.t)),
-      }, 0)
-      .to(unfold, {
-        t: 1, duration: 0.4, ease: 'power2.out',
-        onUpdate: () => setPolygonPoints(lerpPoints(POINTS_FOLDED, POINTS_RECT, unfold.t)),
-      }, 0.4)
-      .to(proxy, { opacity: 0, duration: 0.15, ease: 'power1.out' }, 0.75);
-  }
+  // ---- Real-3D handoff: no flat 2D stand-in shape. #cube-stage and
+  // #triangle-stage are both position:absolute;inset:0 flex-centered panes
+  // (style.css), so they already sit at the exact same screen center —
+  // nothing needs to slide into place. The cube (still a live, spinning
+  // WebGL mesh) shrinks/spins/fades away while the real pyramid mesh grows/
+  // spins/fades in on top of it, both running at once, so the shape stays
+  // dimensional for the entire transition instead of collapsing through a
+  // flat SVG triangle for most of it (the previous fold-proxy's actual
+  // on-screen behavior, confirmed via frame-by-frame screenshots). ----
+  gsap.set(triangleStage, { opacity: 0, scale: 0.2, rotation: -420, x: 0, y: 0 });
 
   function morphToTriangle() {
     if (interactionMode !== 'cube') return;
@@ -1014,17 +906,13 @@ function initWorkMorph(workGrid, triangleNav) {
     // its "Back" face and clicking does the same job. It reappears once a
     // category is selected (see selectCategory()), since the pyramid's own
     // rotation no longer doubles as an exit from that point.
-    runFoldMorph();
+    gsap.set(triangleStage, { scale: 0.2, rotation: -420, opacity: 0 });
     gsap.timeline()
-      .set(triangleStage, { scale: 1 }, 0)
-      .to(cubeScene, { scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { scale: 0.15, rotation: 420, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .set(triangleStage, { pointerEvents: 'auto' }, 0)
+      .to(triangleStage, { scale: 1, rotation: 0, opacity: 1, duration: 0.7, ease: 'power2.inOut' }, 0.08)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
-      .set(dotsWrap, { visibility: 'hidden' })
-      .set(triangleStage, { pointerEvents: 'auto' }, 0.72)
-      .fromTo(triangleStage,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.35, ease: 'power1.out' },
-        0.72);
+      .set(dotsWrap, { visibility: 'hidden' });
   }
 
   // ---- Selecting a category: the triangle alone owns scroll/touch while
@@ -1055,24 +943,16 @@ function initWorkMorph(workGrid, triangleNav) {
     interactionMode = 'cube';
     activeSection = null;
     setSectionBackVisible(false);
-    runUnfoldMorph();
+    // Exact mirror of morphToTriangle: the pyramid now plays the "exit"
+    // role (shrink/spin/fade away) and the cube plays the "entrance" role
+    // (grow/spin/fade in) — same real-3D handoff, no flat proxy shape.
+    gsap.set(cubeScene, { scale: 0.15, rotation: -420, opacity: 0 });
     gsap.timeline()
       .set(triangleStage, { pointerEvents: 'none' }, 0)
-      .to(triangleStage, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
+      .to(triangleStage, { scale: 0.15, rotation: 420, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { scale: 1, rotation: 0, opacity: 1, duration: 0.7, ease: 'power2.inOut' }, 0.08)
       .set(dotsWrap, { visibility: 'visible' }, 0.65)
-      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.7)
-      // The unfold proxy is already full cube size by now (see
-      // runUnfoldMorph's reshape, which finishes at 0.8) — snapping the real
-      // cube to scale 1 here, while it's still invisible, means the two
-      // never differ in size. Only opacity needs to crossfade, timed to
-      // exactly match the proxy's own fade-out below, so it reads as one
-      // shape handing off rather than a square dissolving and a separate,
-      // still-growing cube popping in after it.
-      .set(cubeScene, { scale: 1 }, 0.75)
-      .fromTo(cubeScene,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.15, ease: 'power1.out' },
-        0.75);
+      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.7);
   }
 
   function enterGrid() {
@@ -1114,81 +994,6 @@ function initWorkMorph(workGrid, triangleNav) {
   if (gridHeader) gridHeader.addEventListener('click', enterGrid);
 
   sectionGoBack.work = goBack;
-}
-
-// ---- Shared geometry + fold-morph engine for the remaining cube faces
-// (about/skills/experience/contact). Each face folds from a square into a
-// shape — a circle (approximated with a many-sided polygon), a hexagon, or
-// a square — while sliding left, using the same independent-per-point lerp
-// trick as the Work triangle, generalized to any point count. ----
-
-function regularPolygonPoints(sides, radius, rotationDeg) {
-  const pts = [];
-  for (let i = 0; i < sides; i++) {
-    const angle = (Math.PI / 180) * (rotationDeg + (360 / sides) * i);
-    pts.push([50 + radius * Math.cos(angle), 50 + radius * Math.sin(angle)]);
-  }
-  return pts;
-}
-
-// n points evenly spaced around a 0-100 square's perimeter, so they can be
-// lerped point-for-point against an n-sided target shape.
-function rectPerimeterPoints(n) {
-  function pointAt(d) {
-    if (d < 100) return [d, 0];
-    if (d < 200) return [100, d - 100];
-    if (d < 300) return [100 - (d - 200), 100];
-    return [0, 100 - (d - 300)];
-  }
-  const pts = [];
-  for (let i = 0; i < n; i++) pts.push(pointAt((400 / n) * i));
-  return pts;
-}
-
-function lerpShapePoints(a, b, t) {
-  return a.map((p, i) => [p[0] + (b[i][0] - p[0]) * t, p[1] + (b[i][1] - p[1]) * t]);
-}
-
-// A standalone SVG proxy — independent of the Work triangle's own proxy —
-// that stands in for whichever face is mid-morph. `stayVisible` lets it stay
-// put afterward as the section's resting decorative shape: about/experience/
-// contact don't need a separate persistent element, the proxy just becomes it.
-function createSectionProxy() {
-  const proxy = document.createElement('div');
-  proxy.className = 'work-morph-proxy';
-  proxy.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><polygon></polygon></svg>';
-  document.body.appendChild(proxy);
-  const polygon = proxy.querySelector('polygon');
-
-  function setPoints(points) {
-    polygon.setAttribute('points', points.map((p) => p.join(',')).join(' '));
-  }
-
-  function morph(fromRect, toRect, fromPoints, toPoints, opts) {
-    opts = opts || {};
-    const duration = opts.duration || 0.7;
-    gsap.set(proxy, {
-      position: 'fixed', left: fromRect.left, top: fromRect.top,
-      width: fromRect.width, height: fromRect.height, opacity: 1,
-    });
-    setPoints(fromPoints);
-    const p = { t: 0 };
-    const tl = gsap.timeline()
-      .to(proxy, {
-        left: toRect.left, top: toRect.top, width: toRect.width, height: toRect.height,
-        duration, ease: 'power2.inOut',
-      }, 0)
-      .to(p, {
-        t: 1, duration, ease: 'power2.inOut',
-        onUpdate: () => setPoints(lerpShapePoints(fromPoints, toPoints, p.t)),
-      }, 0);
-    if (!opts.stayVisible) {
-      tl.to(proxy, { opacity: 0, duration: 0.15, ease: 'power1.out' }, Math.max(0, duration - 0.05));
-    }
-    return tl;
-  }
-
-  return { el: proxy, morph };
 }
 
 // ---- Decode-in text effect: reveals a string left-to-right, showing random
@@ -1246,34 +1051,42 @@ function playDecode(targets, opts = {}) {
   });
 }
 
-// ---- About / Experience / Contact: single-tier sections with no rotation.
-// The fold proxy morphs the face into the target shape and just stays there
-// (stayVisible) as the resting decorative shape while its content panel
-// shows on the center-right. Clicking the shape itself — or #section-back,
-// or Escape — reverses the same morph back into the cube. `photoSrc` (only
-// used for "about") turns the shape into a circular photo frame once settled. ----
+// ---- About / Experience / Contact: single-tier sections with no rotation,
+// each with its own real WebGL flat shape (a many-sided polygon reads as a
+// circle, a 4-sided one as a square — see buildFlatPolygonMesh) that docks
+// beside its content panel. Real-3D handoff, same as Work: the cube shrinks/
+// spins/fades away while the section's shape grows/spins/fades in already
+// heading toward its docked spot, both live meshes the whole time rather
+// than a flat SVG standing in permanently as the resting decoration (the
+// previous approach — see morph history for why that read as flat/mismatched
+// next to the cube/pyramid/hexagon, and for the fill color drifting from a
+// separately-maintained CSS var instead of sharing the meshes' own color
+// path). `photoSrc` (only used for "about") overlays a circular photo crop
+// on top of the shape once it settles. ----
 function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
   const face = document.querySelector(`.face[data-face="${key}"]`);
   const cubeScene = document.querySelector('.cube-slot');
+  const stage = document.getElementById(`${key}-stage`);
+  const stageWrap = stage ? stage.querySelector('.tri-wrap') : null;
   const panel = document.getElementById(`${key}-panel`);
   const dotsWrap = document.querySelector('.progress');
-  if (!face || !cubeScene || !panel || typeof gsap === 'undefined') return;
+  if (!face || !cubeScene || !stage || !stageWrap || !panel || typeof gsap === 'undefined') return;
 
-  const proxy = createSectionProxy();
-  const shapePoints = regularPolygonPoints(sides, radius || 47, rotationDeg);
-  const restPoints = rectPerimeterPoints(sides);
-  proxy.el.style.cursor = 'pointer';
+  buildFlatPolygonMesh({ container: stageWrap, sides, rotationDeg, radius: (radius || 47) / 47 });
+  stage.style.cursor = 'pointer';
 
   let photoSlot = null;
   if (photoSrc) {
     photoSlot = document.createElement('div');
     photoSlot.className = 'proxy-photo-slot';
     photoSlot.innerHTML = `<img src="${photoSrc}" alt="Dean Edwards">`;
-    proxy.el.appendChild(photoSlot);
+    stageWrap.appendChild(photoSlot);
+    gsap.set(photoSlot, { opacity: 0 });
   }
 
   const decodeTargets = prepareDecodeTargets(panel, 'h2, p, li, .date, .title, .contact-link');
-  let cachedFaceRect = null;
+
+  gsap.set(stage, { opacity: 0, scale: 0.2, rotation: -420, x: 0, y: 0 });
 
   function morphIn() {
     if (interactionMode !== 'cube') return;
@@ -1281,17 +1094,15 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
     activeSection = key;
     setSectionBackVisible(true);
 
-    const from = face.getBoundingClientRect();
-    cachedFaceRect = from;
-    const to = computeSectionRect();
-    const tl = proxy.morph(from, to, restPoints, shapePoints, { duration: 0.75, stayVisible: true });
-    tl.set(proxy.el, { pointerEvents: 'auto' });
-    if (photoSlot) tl.to(photoSlot, { opacity: 1, duration: 0.3, ease: 'power1.out' }, '-=0.15');
-
-    gsap.timeline()
-      .to(cubeScene, { x: sectionShiftX(), scale: 0.2, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+    const shift = sectionShiftVector();
+    gsap.set(stage, { scale: 0.2, rotation: -420, opacity: 0, x: 0, y: 0, pointerEvents: 'auto' });
+    gsap.set(cubeScene, { scale: 1, rotation: 0, opacity: 1 });
+    const tl = gsap.timeline()
+      .to(cubeScene, { x: shift.x, y: shift.y, scale: 0.15, rotation: 420, opacity: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(stage, { scale: 1, rotation: 0, opacity: 1, x: shift.x, y: shift.y, duration: 0.7, ease: 'power2.inOut' }, 0.08)
       .to(dotsWrap, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0)
       .set(dotsWrap, { visibility: 'hidden' });
+    if (photoSlot) tl.to(photoSlot, { opacity: 1, duration: 0.3, ease: 'power1.out' }, '-=0.2');
 
     panel.classList.add('visible');
     playDecode(decodeTargets, { delay: 0.35 });
@@ -1303,28 +1114,23 @@ function initStaticSection(key, sides, rotationDeg, radius, photoSrc) {
     activeSection = null;
     setSectionBackVisible(false);
     panel.classList.remove('visible');
-    gsap.set(proxy.el, { pointerEvents: 'none' });
+    gsap.set(stage, { pointerEvents: 'none' });
     if (photoSlot) gsap.set(photoSlot, { opacity: 0 });
 
-    const from = computeSectionRect();
-    const to = cachedFaceRect || face.getBoundingClientRect();
-    proxy.morph(from, to, shapePoints, restPoints, { duration: 0.75, stayVisible: false });
-
+    const shift = sectionShiftVector();
+    gsap.set(cubeScene, { x: shift.x, y: shift.y, scale: 0.15, rotation: -420, opacity: 0 });
     gsap.timeline()
-      .set(dotsWrap, { visibility: 'visible' }, 0.55)
-      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.6)
-      .set(cubeScene, { x: 0, scale: 1 }, 0.6)
-      .fromTo(cubeScene,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.3, ease: 'power1.out' },
-        0.6);
+      .to(stage, { scale: 0.2, rotation: 420, opacity: 0, x: 0, y: 0, duration: 0.7, ease: 'power2.inOut' }, 0)
+      .to(cubeScene, { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, duration: 0.7, ease: 'power2.inOut' }, 0.08)
+      .set(dotsWrap, { visibility: 'visible' }, 0.65)
+      .to(dotsWrap, { opacity: 1, duration: 0.3, ease: 'power1.out' }, 0.7);
   }
 
   face.addEventListener('click', () => {
     if (currentFaceKey === key && interactionMode === 'cube') morphIn();
   });
 
-  proxy.el.addEventListener('click', () => {
+  stage.addEventListener('click', () => {
     if (interactionMode === key) morphOut();
   });
 
