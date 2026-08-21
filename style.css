@@ -425,7 +425,7 @@ html {
   opacity: 0;
 }
 .face-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-crt);
   /* Not var(--text-xl): that token floors at 1.6rem, which stays put even
      once --cube-size has shrunk to its mobile minimum (190px) — the text
      stopped scaling down with the face it sits on and started overflowing
@@ -513,7 +513,7 @@ html {
   top: 0;
   left: 0;
   transform: translate(-50%, -50%);
-  font-family: var(--font-mono);
+  font-family: var(--font-crt);
   font-size: clamp(0.8rem, 2vmin, 1.05rem);
   letter-spacing: 1px;
   color: var(--phosphor);
@@ -741,7 +741,7 @@ h1 {
 .lead { color: #b9c9c0; line-height: 1.7; }
 
 h2 {
-  font-family: var(--font-mono);
+  font-family: var(--font-crt);
   font-size: var(--text-md);
   color: var(--amber);
   border-bottom: 1px dashed var(--phosphor-dim);

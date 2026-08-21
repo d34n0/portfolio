@@ -1178,10 +1178,35 @@ const SKILLS_PAGES = [
 // as the Euler x/y/z the main cube's spinGroup needs (not composed relative
 // to any face state), since GSAP tweens the spinGroup's rotation to this
 // absolute target regardless of which face it's coming from.
+//
+// The in-plane roll baked into this tilt puts the RIGHT-facing hexagon
+// edge — the one nearest the docked skill text — vertical, so it reads as
+// "this side = this text block" instead of sitting at a random angle (it
+// was off by ~15° before this was solved for). That roll can't be chosen
+// freely, though: a cube viewed down its body diagonal only has true 3-fold
+// (120°) symmetry, not 6-fold, so no single roll makes the right edge
+// exactly vertical on all 6 pages while keeping them evenly spaced 60°
+// apart (verified numerically — solving each page's roll independently for
+// a perfectly vertical edge gives uneven page-to-page steps ranging
+// 46-72°, which would spin at visibly different speeds per page). This
+// roll — found by search, starting from the ORIGINAL working tilt
+// (x=45°,y=-35.2644°,z=15°) and adding a further camera-axis roll via the
+// same hexPageEuler technique paging already uses (an earlier attempt that
+// instead re-derived the tilt from scratch with a hand-picked z=0° base
+// silently broke the equal-dot-product property, since arbitrary x/y/z
+// values do NOT generally preserve "which world direction faces the
+// camera" the way a genuine roll-on-top-of-a-known-good-tilt does) —
+// turned out to land on an exact, clean minimax point: offset exactly 45°
+// from the original tilt, simplifying to y=0° and x becoming the standard
+// body-diagonal angle acos(1/sqrt(3)) ≈ 54.7356°. At this tilt every one of
+// the 6 pages' right edge is within ~0.5° of vertical (down from ~15°),
+// with the hexagon's regularity (~1% radius variance, same as before)
+// fully unaffected, since a pure camera-axis roll never changes how face-on
+// any face is to the camera — only how the result is rotated on screen.
 const HEX_TILT = {
-  x: THREE.MathUtils.degToRad(45),
-  y: THREE.MathUtils.degToRad(-35.2644),
-  z: THREE.MathUtils.degToRad(15),
+  x: THREE.MathUtils.degToRad(54.735615),
+  y: THREE.MathUtils.degToRad(0),
+  z: THREE.MathUtils.degToRad(45),
 };
 
 // The cube's normal camera (fov 48, needed for corner-rotation clipping
@@ -1504,10 +1529,14 @@ filterButtons.forEach((btn) => {
   });
 });
 
-// ---- Sequence: pause -> zoom into monitor -> type boot log -> reveal prompt ----
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    monitor.classList.add('zoomed');
-    setTimeout(() => typeLines(BOOT_LINES, revealPrompt), 1200);
-  }, 350);
-});
+// ---- Sequence: pause -> zoom into monitor -> type boot log -> reveal prompt.
+// Was gated on window's 'load' event (fires only once every last resource
+// finishes — every image, every font family, everything), so a slow or
+// stalled request anywhere on the page could leave the monitor stuck at its
+// tiny pre-zoom scale indefinitely. Nothing in this sequence actually needs
+// that: a <script type="module"> already only runs after the DOM itself is
+// parsed, which is all these lookups need. ----
+setTimeout(() => {
+  monitor.classList.add('zoomed');
+  setTimeout(() => typeLines(BOOT_LINES, revealPrompt), 1200);
+}, 350);

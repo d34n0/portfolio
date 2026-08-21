@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dean Edwards — IT / Field Engineer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- FONT LAB: extra families below the fold (Press Start 2P...Source Code
+     Pro) are only here so the #font-lab panel can preview them live. Once a
+     heading/body font is chosen, trim this link back down to just those two
+     families — see the FONT LAB block near the end of <body> for the rest. -->
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Orbitron:wght@400..900&family=Audiowide&family=Rajdhani:wght@400;500;600;700&family=Chakra+Petch:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=Space+Grotesk:wght@400;500;700&family=Archivo+Black&family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&family=Playfair+Display:wght@400;600;700&family=Michroma&family=Syncopate:wght@400;700&family=Unica+One&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Share+Tech+Mono&family=Fira+Code:wght@400;500;600&family=Source+Code+Pro:wght@400;500;600&family=Roboto+Mono:wght@400;500;600&family=Ubuntu+Mono:wght@400;700&family=Inconsolata:wght@400;500;600&family=Cousine:wght@400;700&family=Overpass+Mono:wght@400;600&family=DM+Mono:wght@400;500&family=Work+Sans:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -291,5 +295,136 @@
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
 </script>
 <script type="module" src="script.js"></script>
+
+<!-- ============================================================
+     FONT LAB — temporary design-pass tool. Delete this whole block
+     (through the closing comment below) once fonts are decided, then
+     trim the Google Fonts <link> in <head> down to just the two
+     families you kept.
+     ============================================================ -->
+<!-- Starts hidden (press F to open): its fixed bottom-right position
+     overlaps the .progress nav dots at mobile widths, so it must never be
+     in the way unless actively opened. -->
+<div id="font-lab" class="hidden">
+  <div class="font-lab-row">
+    <label for="font-lab-heading">Heading (face labels, section titles)</label>
+    <select id="font-lab-heading"></select>
+  </div>
+  <div class="font-lab-row">
+    <label for="font-lab-body">Body (paragraphs, list items, subtitles)</label>
+    <select id="font-lab-body"></select>
+  </div>
+  <div class="font-lab-row font-lab-current"></div>
+  <button id="font-lab-hide" type="button">hide (press F to reopen)</button>
+</div>
+<style>
+  #font-lab {
+    position: fixed; z-index: 9999; bottom: 12px; right: 12px;
+    width: 260px; padding: 12px 14px;
+    background: rgba(4, 10, 7, 0.92); border: 1px solid #1c9a52;
+    border-radius: 6px; box-shadow: 0 0 20px rgba(57, 255, 136, 0.25);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #b9c9c0;
+  }
+  #font-lab.hidden { display: none; }
+  .font-lab-row { margin-bottom: 8px; }
+  .font-lab-row label { display: block; margin-bottom: 3px; color: #39ff88; }
+  .font-lab-row select {
+    width: 100%; background: #05070a; color: #b9c9c0;
+    border: 1px solid #1c9a52; border-radius: 3px; padding: 4px; font: inherit;
+  }
+  .font-lab-current { font-size: 10px; opacity: 0.7; line-height: 1.5; }
+  #font-lab-hide {
+    width: 100%; background: transparent; color: #39ff88;
+    border: 1px solid #1c9a52; border-radius: 3px; padding: 4px; font: inherit;
+    cursor: pointer;
+  }
+  #font-lab-hide:hover { background: rgba(57, 255, 136, 0.1); }
+</style>
+<script>
+(function () {
+  var HEADINGS = [
+    ['VT323 (current)', "'VT323', monospace"],
+    ['Press Start 2P', "'Press Start 2P', monospace"],
+    ['Orbitron', "'Orbitron', sans-serif"],
+    ['Audiowide', "'Audiowide', sans-serif"],
+    ['Rajdhani', "'Rajdhani', sans-serif"],
+    ['Chakra Petch', "'Chakra Petch', sans-serif"],
+    ['Silkscreen', "'Silkscreen', monospace"],
+    ['Michroma', "'Michroma', sans-serif"],
+    ['Syncopate', "'Syncopate', sans-serif"],
+    ['Unica One', "'Unica One', sans-serif"],
+    ['Space Grotesk', "'Space Grotesk', sans-serif"],
+    ['Archivo Black', "'Archivo Black', sans-serif"],
+    ['Bebas Neue', "'Bebas Neue', sans-serif"],
+    ['Oswald', "'Oswald', sans-serif"],
+    ['IBM Plex Serif', "'IBM Plex Serif', serif"],
+    ['Playfair Display', "'Playfair Display', serif"],
+  ];
+  var BODIES = [
+    ['IBM Plex Mono (current)', "'IBM Plex Mono', monospace"],
+    ['JetBrains Mono', "'JetBrains Mono', monospace"],
+    ['Space Mono', "'Space Mono', monospace"],
+    ['Share Tech Mono', "'Share Tech Mono', monospace"],
+    ['Fira Code', "'Fira Code', monospace"],
+    ['Source Code Pro', "'Source Code Pro', monospace"],
+    ['Roboto Mono', "'Roboto Mono', monospace"],
+    ['Ubuntu Mono', "'Ubuntu Mono', monospace"],
+    ['Inconsolata', "'Inconsolata', monospace"],
+    ['Cousine', "'Cousine', monospace"],
+    ['Overpass Mono', "'Overpass Mono', monospace"],
+    ['DM Mono', "'DM Mono', monospace"],
+    ['Work Sans (non-mono)', "'Work Sans', sans-serif"],
+    ['Inter (non-mono)', "'Inter', sans-serif"],
+  ];
+
+  function populate(select, options) {
+    options.forEach(function (opt) {
+      var el = document.createElement('option');
+      el.value = opt[1];
+      el.textContent = opt[0];
+      select.appendChild(el);
+    });
+  }
+
+  function apply() {
+    var h = localStorage.getItem('fontlab-heading') || HEADINGS[0][1];
+    var b = localStorage.getItem('fontlab-body') || BODIES[0][1];
+    document.documentElement.style.setProperty('--font-crt', h);
+    document.documentElement.style.setProperty('--font-mono', b);
+    var label = document.querySelector('.font-lab-current');
+    if (label) label.textContent = 'heading: ' + h.split(',')[0] + '\nbody: ' + b.split(',')[0];
+  }
+
+  var headingSelect = document.getElementById('font-lab-heading');
+  var bodySelect = document.getElementById('font-lab-body');
+  populate(headingSelect, HEADINGS);
+  populate(bodySelect, BODIES);
+  headingSelect.value = localStorage.getItem('fontlab-heading') || HEADINGS[0][1];
+  bodySelect.value = localStorage.getItem('fontlab-body') || BODIES[0][1];
+  apply();
+
+  headingSelect.addEventListener('change', function () {
+    localStorage.setItem('fontlab-heading', headingSelect.value);
+    apply();
+  });
+  bodySelect.addEventListener('change', function () {
+    localStorage.setItem('fontlab-body', bodySelect.value);
+    apply();
+  });
+
+  var panel = document.getElementById('font-lab');
+  document.getElementById('font-lab-hide').addEventListener('click', function () {
+    panel.classList.add('hidden');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'f' || e.key === 'F') {
+      if (document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+      panel.classList.toggle('hidden');
+    }
+  });
+})();
+</script>
+<!-- ========================== END FONT LAB ========================== -->
+
 </body>
 </html>

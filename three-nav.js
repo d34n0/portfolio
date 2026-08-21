@@ -103,24 +103,34 @@ export function createShapeNavigator({
   let stopped = false;
   const totalDuration = states.length - 1;
 
-  function rotationAt(p) {
+  // Precomputed once per state, not re-derived per frame: slerping between
+  // these — rather than linearly interpolating each Euler x/y/z independently
+  // (the same math the old CSS version's GSAP rotateX/rotateY tweens were
+  // already doing) — fixed a real bug found once the skills hexagon's 6 pages
+  // were added. Euler XYZ decomposition isn't continuous across a wide sweep
+  // of orientations: two adjacent states can land in different "branches" of
+  // the representation (verified numerically — one pair of adjacent hexagon
+  // pages came out ~275° apart on one axis despite the actual orientations
+  // being close), and linearly interpolating through that visibly flips the
+  // shape instead of spinning it. Quaternion slerp always takes the true
+  // shortest rotational path between two orientations regardless of how their
+  // Euler angles happen to be decomposed, so this fixes the bug in general
+  // rather than special-casing the one pair of states that exposed it.
+  const stateQuaternions = states.map((s) => new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(s.rotation.x || 0, s.rotation.y || 0, s.rotation.z || 0, 'XYZ'),
+  ));
+
+  function quaternionAt(p) {
     const t = Math.max(0, Math.min(1, p)) * totalDuration;
     const segIndex = Math.min(states.length - 2, Math.floor(t));
     const segT = t - segIndex;
-    const a = states[segIndex].rotation;
-    const b = states[segIndex + 1].rotation;
-    return {
-      x: (a.x || 0) + ((b.x || 0) - (a.x || 0)) * segT,
-      y: (a.y || 0) + ((b.y || 0) - (a.y || 0)) * segT,
-      z: (a.z || 0) + ((b.z || 0) - (a.z || 0)) * segT,
-    };
+    return new THREE.Quaternion().slerpQuaternions(
+      stateQuaternions[segIndex], stateQuaternions[segIndex + 1], segT,
+    );
   }
 
   function applyProgress(p) {
-    const rot = rotationAt(p);
-    spinGroup.rotation.x = rot.x;
-    spinGroup.rotation.y = rot.y;
-    spinGroup.rotation.z = rot.z;
+    spinGroup.quaternion.copy(quaternionAt(p));
     const idx = Math.round(Math.max(0, Math.min(1, p)) * totalDuration);
     if (idx !== activeIndex) {
       activeIndex = idx;
